@@ -1,5 +1,5 @@
 import { pgDb } from './postgres.db.js';
-import { User, FileMetadata, Folder, BlobRecord, FileVersion, ShareLink, Job, AuditLog, RefreshToken } from './types.js';
+import { User, FileMetadata, Folder, BlobRecord, FileVersion, FilePermission, ShareLink, Job, AuditLog, RefreshToken } from './types.js';
 import { logger } from '../core/logger.js';
 
 export class PostgresRepository {
@@ -217,6 +217,57 @@ export class PostgresRepository {
         link.createdAt,
       ]
     );
+  }
+
+  async getAllShareLinks(): Promise<ShareLink[]> {
+    const res = await pgDb.query(
+      `SELECT id, resource_id as "resourceId", resource_type as "resourceType", token, 
+              token_hash as "tokenHash", permission_level as "permission", 
+              password_hash as "passwordHash", is_revoked as "isRevoked", 
+              access_count as "accessCount", expires_at as "expiresAt", 
+              created_by as "createdBy", created_at as "createdAt" 
+       FROM share_links;`
+    );
+    if (!res) return [];
+    return res.rows;
+  }
+
+  async deleteShareLink(id: string): Promise<void> {
+    await pgDb.query(`DELETE FROM share_links WHERE id = $1;`, [id]);
+  }
+
+  // ================= FILE PERMISSIONS =================
+  async saveFilePermission(perm: FilePermission): Promise<void> {
+    await pgDb.query(
+      `INSERT INTO file_permissions (id, resource_id, resource_type, grantee_id, permission_level, granted_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO UPDATE SET
+         permission_level = EXCLUDED.permission_level;`,
+      [
+        perm.id,
+        perm.resourceId,
+        perm.resourceType,
+        perm.granteeId,
+        perm.permissionLevel || 'read',
+        perm.grantedBy,
+        perm.createdAt,
+      ]
+    );
+  }
+
+  async deleteFilePermission(permId: string): Promise<void> {
+    await pgDb.query(`DELETE FROM file_permissions WHERE id = $1;`, [permId]);
+  }
+
+  async getAllFilePermissions(): Promise<FilePermission[]> {
+    const res = await pgDb.query(
+      `SELECT id, resource_id as "resourceId", resource_type as "resourceType", 
+              grantee_id as "granteeId", permission_level as "permissionLevel", 
+              granted_by as "grantedBy", created_at as "createdAt" 
+       FROM file_permissions;`
+    );
+    if (!res) return [];
+    return res.rows;
   }
 
   // ================= JOBS =================
