@@ -13,6 +13,7 @@ import { AuditFeed } from './components/AuditFeed.js';
 import { QuotaWidget } from './components/QuotaWidget.js';
 import { AuthModal } from './components/AuthModal.js';
 import { CreateFolderModal } from './components/CreateFolderModal.js';
+import { PublicSharePortal } from './components/PublicSharePortal.js';
 import { ApiClient } from './api/client.js';
 import { FileMetadata, Folder, QuotaInfo } from './types/index.js';
 import { FolderGit2 } from 'lucide-react';
@@ -20,6 +21,15 @@ import { FolderGit2 } from 'lucide-react';
 const MainWorkspace: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('explorer');
+
+  // Check public share token in URL path (/share/:token or /public/:token)
+  const path = window.location.pathname;
+  const match = path.match(/^\/(share|public)\/([^\/]+)/);
+  const shareToken = match ? match[2] : null;
+
+  if (shareToken) {
+    return <PublicSharePortal token={shareToken} />;
+  }
 
   // File / Folder State
   const [files, setFiles] = useState<FileMetadata[]>([]);

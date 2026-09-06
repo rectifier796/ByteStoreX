@@ -28,7 +28,7 @@ export const SharedLinksView: React.FC = () => {
   useEffect(() => { fetchLinks(); }, []);
 
   const copyLink = (link: ShareLink) => {
-    navigator.clipboard.writeText(`${window.location.origin}/api/v1/sharing/public/${link.token}`);
+    navigator.clipboard.writeText(`${window.location.origin}/share/${link.token}`);
     setCopiedId(link.id);
     showToast('Copied to clipboard', 'success');
     setTimeout(() => setCopiedId(null), 2000);
@@ -224,7 +224,7 @@ export const SharedLinksView: React.FC = () => {
                               </button>
                               <button
                                 className="btn btn-ghost btn-icon btn-sm"
-                                onClick={() => window.open(`/api/v1/sharing/public/${link.token}`, '_blank')}
+                                onClick={() => window.open(`/share/${link.token}`, '_blank')}
                                 title="Open link"
                               >
                                 <ExternalLink size={14} />

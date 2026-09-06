@@ -65,7 +65,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   const copyLink = (token: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/api/v1/sharing/public/${token}`);
+    navigator.clipboard.writeText(`${window.location.origin}/share/${token}`);
     setCopied(true);
     showToast('Link copied to clipboard', 'success');
     setTimeout(() => setCopied(false), 2000);
@@ -130,7 +130,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                     className="copy-link-url"
                     type="text"
                     readOnly
-                    value={`${window.location.origin}/api/v1/sharing/public/${createdLink.token}`}
+                    value={`${window.location.origin}/share/${createdLink.token}`}
                   />
                   <button
                     className={`btn btn-sm${copied ? ' btn-success' : ' btn-primary'}`}

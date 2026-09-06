@@ -91,6 +91,16 @@ sharingRouter.get('/permissions/:resourceType/:resourceId', requireAuth, async (
 // GET /api/v1/sharing/public/:token - Resolve public share link
 sharingRouter.get('/public/:token', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const accept = req.headers.accept || '';
+    // If opened directly in browser window (text/html navigation request), redirect to frontend web portal
+    if (accept.includes('text/html') && !req.headers['x-requested-with']) {
+      const host = req.get('host') || 'localhost:5000';
+      const clientPort = process.env.CLIENT_PORT || '5173';
+      const protocol = req.protocol;
+      const clientUrl = `${protocol}://${host.split(':')[0]}:${clientPort}/share/${req.params.token}`;
+      return res.redirect(clientUrl);
+    }
+
     const password = (req.headers['x-share-password'] as string) || (req.query.password as string);
     const result = await sharingService.resolveShareToken(req.params.token, password);
     res.json({ success: true, ...result });
