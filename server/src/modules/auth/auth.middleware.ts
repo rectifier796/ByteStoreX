@@ -5,11 +5,18 @@ import { requestContext } from '../../core/context.js';
 
 export const requireAuth = (req: Request, _res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  let token: string | undefined;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query && typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
+  if (!token) {
     return next(new UnauthorizedError('Missing or invalid Authorization header'));
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const payload = authService.verifyAccessToken(token);
     (req as any).user = payload;

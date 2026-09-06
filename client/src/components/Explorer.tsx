@@ -22,11 +22,13 @@ import {
   Copy,
   CheckCircle,
   Filter,
+  Eye,
 } from 'lucide-react';
 import { FileMetadata, Folder } from '../types/index.js';
 import { ApiClient } from '../api/client.js';
 import { ContextMenu, ContextMenuItem } from './ContextMenu.js';
 import { VersionHistoryPanel } from './VersionHistoryPanel.js';
+import { PreviewModal } from './PreviewModal.js';
 import { useToast } from '../context/ToastContext.js';
 
 interface ExplorerProps {
@@ -115,6 +117,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [versionFile, setVersionFile] = useState<FileMetadata | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileMetadata | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -214,6 +217,11 @@ export const Explorer: React.FC<ExplorerProps> = ({
     });
 
   const buildFileContextMenu = (file: FileMetadata): ContextMenuItem[] => [
+    {
+      label: 'Preview File',
+      icon: <Eye size={15} />,
+      onClick: () => setPreviewFile(file),
+    },
     {
       label: 'Download',
       icon: <Download size={15} />,
@@ -494,6 +502,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
                 <div
                   key={file.id}
                   className={`file-card${viewMode === 'list' ? ' list-mode' : ''}`}
+                  onDoubleClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
                   onContextMenu={(e) => handleContextMenu(e, buildFileContextMenu(file))}
                 >
                   {/* Icon */}
@@ -559,6 +568,13 @@ export const Explorer: React.FC<ExplorerProps> = ({
                   {/* Actions */}
                   <div className="file-card-actions" onClick={(e) => e.stopPropagation()}>
                     <button
+                      className="file-card-action-btn"
+                      onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
+                      title="Preview"
+                    >
+                      <Eye size={15} />
+                    </button>
+                    <button
                       className={`file-card-action-btn star${file.isStarred ? ' starred' : ''}`}
                       onClick={(e) => handleToggleStarFile(file.id, e)}
                       title="Star"
@@ -616,6 +632,15 @@ export const Explorer: React.FC<ExplorerProps> = ({
         file={versionFile}
         onClose={() => setVersionFile(null)}
         onRestored={onRefresh}
+      />
+
+      {/* File Preview Modal */}
+      <PreviewModal
+        file={previewFile}
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={(id, name) => handleDownload(id, name)}
+        onShare={(id) => onOpenShareModal(id, 'file')}
       />
     </div>
   );

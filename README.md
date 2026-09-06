@@ -16,7 +16,7 @@
 
 <br />
 
-![ByteStoreX Banner](docs/images/hero_banner.jpg)
+![ByteStoreX Banner](docs/images/UI.png)
 
 </div>
 
