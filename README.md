@@ -16,7 +16,10 @@
 
 <br />
 
-![ByteStoreX Banner](docs/images/UI.png)
+![ByteStoreX Banner](docs/images/UI4.png)
+![ByteStoreX Banner](docs/images/UI3.png)
+![ByteStoreX Banner](docs/images/UI2.png)
+![ByteStoreX Banner](docs/images/UI1.png)
 
 </div>
 
