@@ -53,6 +53,9 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -62,6 +65,12 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
     if (!isOpen || !file) {
       setTextContent(null);
       setTextError(null);
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
+      setLoadingPdf(false);
+      setPdfError(null);
       setZoom(1);
       setRotation(0);
       setIsFullscreen(false);
@@ -69,6 +78,31 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
     }
 
     const mime = file.mimeType.toLowerCase();
+    const isPdfType = mime === 'application/pdf' || file.name.endsWith('.pdf');
+
+    if (isPdfType) {
+      setLoadingPdf(true);
+      setPdfError(null);
+      const token = localStorage.getItem('bytestore_access_token');
+      fetch(`/api/v1/files/${file.id}/stream`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load PDF document');
+          return res.blob();
+        })
+        .then((blob) => {
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          const url = URL.createObjectURL(pdfBlob);
+          setPdfBlobUrl(url);
+          setLoadingPdf(false);
+        })
+        .catch((err) => {
+          setPdfError(err.message || 'Error loading PDF');
+          setLoadingPdf(false);
+        });
+    }
+
     const isText =
       mime.startsWith('text/') ||
       mime.includes('json') ||
@@ -415,15 +449,43 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
 
           {/* PDF Preview */}
           {isPdf && (
-            <iframe
-              src={streamUrl}
-              title={file.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-              }}
-            />
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
+              {loadingPdf ? (
+                <div style={{ margin: 'auto', color: 'var(--text-subtle)', fontSize: '0.9rem' }}>
+                  Loading PDF viewer…
+                </div>
+              ) : pdfError ? (
+                <div style={{ margin: 'auto', textAlign: 'center', color: '#fca5a5' }}>
+                  <Info size={28} style={{ marginBottom: '8px' }} />
+                  <div>{pdfError}</div>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginTop: '12px' }}
+                    onClick={() => onDownload(file.id, file.name)}
+                  >
+                    Download File Instead
+                  </button>
+                </div>
+              ) : pdfBlobUrl ? (
+                <object
+                  data={pdfBlobUrl}
+                  type="application/pdf"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                >
+                  <iframe
+                    src={pdfBlobUrl}
+                    title={file.name}
+                    style={{ width: '100%', height: '100%', border: 'none' }}
+                  />
+                </object>
+              ) : (
+                <iframe
+                  src={streamUrl}
+                  title={file.name}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+            </div>
           )}
 
           {/* Text / Code Preview */}

@@ -87,7 +87,7 @@ filesRouter.post('/:id/copy', requireAuth, idempotencyMiddleware, async (req: Re
 });
 
 // GET /:id/download & GET /:id/stream - Stream file content with HTTP Range/206 support & disconnect handling
-const streamHandler = async (req: Request, res: Response, next: NextFunction) => {
+const createStreamHandler = (isDownload: boolean) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
     const rangeHeader = req.headers.range;
@@ -109,14 +109,18 @@ const streamHandler = async (req: Request, res: Response, next: NextFunction) =>
     res.on('close', cleanup);
     stream.on('error', cleanup);
 
+    const dispositionType = isDownload ? 'attachment' : 'inline';
+    const dispositionHeader = `${dispositionType}; filename="${encodeURIComponent(file.name)}"`;
+
     if (isRange) {
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${file.size}`);
       res.setHeader('Content-Length', contentLength.toString());
+      res.setHeader('Content-Disposition', dispositionHeader);
     } else {
       res.status(200);
       res.setHeader('Content-Length', file.size.toString());
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
+      res.setHeader('Content-Disposition', dispositionHeader);
     }
 
     stream.pipe(res);
@@ -125,8 +129,8 @@ const streamHandler = async (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
-filesRouter.get('/:id/download', requireAuth, streamHandler);
-filesRouter.get('/:id/stream', requireAuth, streamHandler);
+filesRouter.get('/:id/download', requireAuth, createStreamHandler(true));
+filesRouter.get('/:id/stream', requireAuth, createStreamHandler(false));
 
 // GET /:id/signed-url - Generate short-lived presigned URL after authorization check
 filesRouter.get('/:id/signed-url', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
