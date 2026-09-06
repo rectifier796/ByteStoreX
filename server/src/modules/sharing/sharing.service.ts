@@ -371,6 +371,13 @@ export class SharingService {
   async listUserShareLinks(createdBy: string): Promise<ShareLink[]> {
     return Array.from(db.shareLinks.values()).filter((s) => s.createdBy === createdBy && !s.isRevoked);
   }
+
+  /**
+   * Lists active share links for a specific resource
+   */
+  async listResourceShareLinks(resourceId: string): Promise<ShareLink[]> {
+    return Array.from(db.shareLinks.values()).filter((s) => s.resourceId === resourceId && !s.isRevoked);
+  }
 }
 
 export const sharingService = new SharingService();
