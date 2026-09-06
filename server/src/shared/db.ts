@@ -60,6 +60,14 @@ class InMemoryDB {
         for (const f of pgFiles) {
           this.files.set(f.id, f);
         }
+        const pgShareLinks = await postgresRepo.getAllShareLinks();
+        for (const sl of pgShareLinks) {
+          this.shareLinks.set(sl.id, sl);
+        }
+        const pgPermissions = await postgresRepo.getAllFilePermissions();
+        for (const perm of pgPermissions) {
+          this.permissions.set(perm.id, perm);
+        }
       }
     } catch {
       // Fall back smoothly if PostgreSQL is offline

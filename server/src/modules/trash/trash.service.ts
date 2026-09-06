@@ -5,6 +5,7 @@ import { auditService } from '../audit/audit.service.js';
 import { blobsService } from '../blobs/blobs.service.js';
 import { quotaService } from '../quota/quota.service.js';
 import { redisCacheManager } from '../../shared/redis.cache.js';
+import { postgresRepo } from '../../shared/postgres.repo.js';
 
 export class TrashService {
   /**
@@ -19,6 +20,7 @@ export class TrashService {
       file.isTrashed = true;
       file.trashedAt = now;
       db.files.set(resourceId, file);
+      await postgresRepo.saveFile(file).catch(() => {});
       await redisCacheManager.del(`cache:meta:file:${resourceId}`);
     } else {
       const folder = db.folders.get(resourceId);
@@ -26,6 +28,7 @@ export class TrashService {
       folder.isTrashed = true;
       folder.trashedAt = now;
       db.folders.set(resourceId, folder);
+      await postgresRepo.saveFolder(folder).catch(() => {});
     }
 
     await auditService.record({
@@ -57,6 +60,7 @@ export class TrashService {
       file.isTrashed = false;
       file.trashedAt = undefined;
       db.files.set(resourceId, file);
+      await postgresRepo.saveFile(file).catch(() => {});
     } else {
       const folder = db.folders.get(resourceId);
       if (!folder || folder.ownerId !== ownerId) throw new NotFoundError('Folder');
@@ -71,6 +75,7 @@ export class TrashService {
       folder.isTrashed = false;
       folder.trashedAt = undefined;
       db.folders.set(resourceId, folder);
+      await postgresRepo.saveFolder(folder).catch(() => {});
     }
 
     await auditService.record({
@@ -140,10 +145,12 @@ export class TrashService {
       await quotaService.releaseQuota(ownerId, file.size);
 
       db.files.delete(resourceId);
+      await postgresRepo.deleteFile(resourceId).catch(() => {});
     } else {
       const folder = db.folders.get(resourceId);
       if (!folder || folder.ownerId !== ownerId) throw new NotFoundError('Folder');
       db.folders.delete(resourceId);
+      await postgresRepo.deleteFolder(resourceId).catch(() => {});
     }
 
     await auditService.record({

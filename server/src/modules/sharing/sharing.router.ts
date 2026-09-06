@@ -5,8 +5,8 @@ import { idempotencyMiddleware } from '../../core/idempotency.middleware.js';
 
 export const sharingRouter = Router();
 
-// POST /api/v1/sharing/links - Create public share link (supports expiration & password protection)
-sharingRouter.post('/links', requireAuth, idempotencyMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// POST /api/v1/sharing and /api/v1/sharing/links - Create public share link
+const createLinkHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
     const shareLink = await sharingService.createShareLink(req.body, user.userId, user.role);
@@ -14,21 +14,35 @@ sharingRouter.post('/links', requireAuth, idempotencyMiddleware, async (req: Req
   } catch (err) {
     next(err);
   }
-});
+};
+sharingRouter.post('/', requireAuth, idempotencyMiddleware, createLinkHandler);
+sharingRouter.post('/links', requireAuth, idempotencyMiddleware, createLinkHandler);
 
-// GET /api/v1/sharing/my-links - List active share links created by user
-sharingRouter.get('/my-links', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+// GET /api/v1/sharing/my-links & /api/v1/sharing/links - List active share links created by user
+const listMyLinksHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const createdBy = (req as any).user.userId;
-    const links = await sharingService.listUserShareLinks(createdBy);
-    res.json({ success: true, links });
+    const shareLinks = await sharingService.listUserShareLinks(createdBy);
+    res.json({ success: true, shareLinks, links: shareLinks });
+  } catch (err) {
+    next(err);
+  }
+};
+sharingRouter.get('/my-links', requireAuth, listMyLinksHandler);
+sharingRouter.get('/links', requireAuth, listMyLinksHandler);
+
+// GET /api/v1/sharing/resource/:resourceId - List share links for a resource
+sharingRouter.get('/resource/:resourceId', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const shareLinks = await sharingService.listResourceShareLinks(req.params.resourceId);
+    res.json({ success: true, shareLinks });
   } catch (err) {
     next(err);
   }
 });
 
-// DELETE /api/v1/sharing/links/:id - Revoke a public share link
-sharingRouter.delete('/links/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+// DELETE /api/v1/sharing/:id & /api/v1/sharing/links/:id - Revoke a public share link
+const revokeLinkHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
     await sharingService.revokeShareLink(user.userId, user.role, req.params.id);
@@ -36,7 +50,9 @@ sharingRouter.delete('/links/:id', requireAuth, async (req: Request, res: Respon
   } catch (err) {
     next(err);
   }
-});
+};
+sharingRouter.delete('/:id', requireAuth, revokeLinkHandler);
+sharingRouter.delete('/links/:id', requireAuth, revokeLinkHandler);
 
 // POST /api/v1/sharing/grant - Grant direct ACL permission to another user by email
 sharingRouter.post('/grant', requireAuth, idempotencyMiddleware, async (req: Request, res: Response, next: NextFunction) => {
@@ -75,6 +91,16 @@ sharingRouter.get('/permissions/:resourceType/:resourceId', requireAuth, async (
 // GET /api/v1/sharing/public/:token - Resolve public share link
 sharingRouter.get('/public/:token', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const accept = req.headers.accept || '';
+    // If opened directly in browser window (text/html navigation request), redirect to frontend web portal
+    if (accept.includes('text/html') && !req.headers['x-requested-with']) {
+      const host = req.get('host') || 'localhost:5000';
+      const clientPort = process.env.CLIENT_PORT || '5173';
+      const protocol = req.protocol;
+      const clientUrl = `${protocol}://${host.split(':')[0]}:${clientPort}/share/${req.params.token}`;
+      return res.redirect(clientUrl);
+    }
+
     const password = (req.headers['x-share-password'] as string) || (req.query.password as string);
     const result = await sharingService.resolveShareToken(req.params.token, password);
     res.json({ success: true, ...result });

@@ -22,11 +22,13 @@ import {
   Copy,
   CheckCircle,
   Filter,
+  Eye,
 } from 'lucide-react';
 import { FileMetadata, Folder } from '../types/index.js';
 import { ApiClient } from '../api/client.js';
 import { ContextMenu, ContextMenuItem } from './ContextMenu.js';
 import { VersionHistoryPanel } from './VersionHistoryPanel.js';
+import { PreviewModal } from './PreviewModal.js';
 import { useToast } from '../context/ToastContext.js';
 
 interface ExplorerProps {
@@ -115,6 +117,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [versionFile, setVersionFile] = useState<FileMetadata | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileMetadata | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -142,7 +145,8 @@ export const Explorer: React.FC<ExplorerProps> = ({
     onRefresh();
   };
 
-  const handleSoftDelete = async (id: string, type: 'file' | 'folder') => {
+  const handleSoftDelete = async (id: string, type: 'file' | 'folder', e?: React.MouseEvent) => {
+    e?.stopPropagation();
     try {
       await ApiClient.post('/api/v1/trash/soft-delete', { resourceId: id, resourceType: type });
       showToast(`Moved to trash`, 'info');
@@ -168,22 +172,31 @@ export const Explorer: React.FC<ExplorerProps> = ({
     onRefresh();
   };
 
-  const handleDownload = (fileId: string, fileName: string) => {
+  const handleDownload = (fileId: string, fileName: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const token = localStorage.getItem('bytestore_access_token');
     fetch(`/api/v1/files/${fileId}/download`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.blob())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.blob();
+      })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = fileName;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
         showToast('Download started', 'success');
       })
-      .catch(() => showToast('Download failed', 'error'));
+      .catch((err: any) => {
+        console.error('Download error:', err);
+        showToast('Download failed: ' + (err.message || 'Error'), 'error');
+      });
   };
 
   // Sort & Filter
@@ -204,6 +217,11 @@ export const Explorer: React.FC<ExplorerProps> = ({
     });
 
   const buildFileContextMenu = (file: FileMetadata): ContextMenuItem[] => [
+    {
+      label: 'Preview File',
+      icon: <Eye size={15} />,
+      onClick: () => setPreviewFile(file),
+    },
     {
       label: 'Download',
       icon: <Download size={15} />,
@@ -484,6 +502,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
                 <div
                   key={file.id}
                   className={`file-card${viewMode === 'list' ? ' list-mode' : ''}`}
+                  onDoubleClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
                   onContextMenu={(e) => handleContextMenu(e, buildFileContextMenu(file))}
                 >
                   {/* Icon */}
@@ -547,7 +566,14 @@ export const Explorer: React.FC<ExplorerProps> = ({
                   )}
 
                   {/* Actions */}
-                  <div className="file-card-actions">
+                  <div className="file-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="file-card-action-btn"
+                      onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
+                      title="Preview"
+                    >
+                      <Eye size={15} />
+                    </button>
                     <button
                       className={`file-card-action-btn star${file.isStarred ? ' starred' : ''}`}
                       onClick={(e) => handleToggleStarFile(file.id, e)}
@@ -557,28 +583,28 @@ export const Explorer: React.FC<ExplorerProps> = ({
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => handleDownload(file.id, file.name)}
+                      onClick={(e) => handleDownload(file.id, file.name, e)}
                       title="Download"
                     >
                       <Download size={15} />
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => onOpenShareModal(file.id, 'file')}
+                      onClick={(e) => { e.stopPropagation(); onOpenShareModal(file.id, 'file'); }}
                       title="Share"
                     >
                       <Share2 size={15} />
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => setVersionFile(file)}
+                      onClick={(e) => { e.stopPropagation(); setVersionFile(file); }}
                       title="Version History"
                     >
                       <History size={15} />
                     </button>
                     <button
                       className="file-card-action-btn danger"
-                      onClick={() => handleSoftDelete(file.id, 'file')}
+                      onClick={(e) => handleSoftDelete(file.id, 'file', e)}
                       title="Trash"
                     >
                       <Trash2 size={15} />
@@ -606,6 +632,15 @@ export const Explorer: React.FC<ExplorerProps> = ({
         file={versionFile}
         onClose={() => setVersionFile(null)}
         onRestored={onRefresh}
+      />
+
+      {/* File Preview Modal */}
+      <PreviewModal
+        file={previewFile}
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={(id, name) => handleDownload(id, name)}
+        onShare={(id) => onOpenShareModal(id, 'file')}
       />
     </div>
   );

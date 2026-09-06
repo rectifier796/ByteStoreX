@@ -8,6 +8,7 @@ import { auditService } from '../audit/audit.service.js';
 import { assertPermission, invalidatePermissionCache } from '../../shared/permissions.js';
 import { storageService } from '../storage/storage.service.js';
 import { assertSafeStoragePath, hashToken } from '../../core/security.js';
+import { postgresRepo } from '../../shared/postgres.repo.js';
 
 export interface CreateShareLinkDTO {
   resourceId: string;
@@ -82,6 +83,8 @@ export class SharingService {
       db.permissions.set(permissionRecord.id, permissionRecord);
     }
 
+    await postgresRepo.saveFilePermission(permissionRecord).catch(() => {});
+
     // Invalidate permission cache
     await invalidatePermissionCache(granteeUser.id, resourceId);
 
@@ -120,6 +123,7 @@ export class SharingService {
     assertPermission(granterId, granterRole, perm.resourceId, perm.resourceType, ownerId, 'EDITOR');
 
     db.permissions.delete(permissionId);
+    await postgresRepo.deleteFilePermission(permissionId).catch(() => {});
     await invalidatePermissionCache(perm.granteeId, perm.resourceId);
 
     await auditService.record({
@@ -211,6 +215,7 @@ export class SharingService {
     };
 
     db.shareLinks.set(shareLink.id, shareLink);
+    await postgresRepo.saveShareLink(shareLink).catch(() => {});
 
     await auditService.record({
       action: 'SHARE_LINK_CREATE',
@@ -253,6 +258,7 @@ export class SharingService {
 
     shareLink.isRevoked = true;
     db.shareLinks.set(shareLink.id, shareLink);
+    await postgresRepo.saveShareLink(shareLink).catch(() => {});
 
     await auditService.record({
       action: 'SHARE_LINK_REVOKE',
@@ -300,6 +306,7 @@ export class SharingService {
     // Incrementing before the password check leaks state (timing oracle on brute-force).
     shareLink.accessCount += 1;
     db.shareLinks.set(shareLink.id, shareLink);
+    await postgresRepo.saveShareLink(shareLink).catch(() => {});
 
     let resource: any;
     if (shareLink.resourceType === 'file') {
@@ -370,6 +377,13 @@ export class SharingService {
    */
   async listUserShareLinks(createdBy: string): Promise<ShareLink[]> {
     return Array.from(db.shareLinks.values()).filter((s) => s.createdBy === createdBy && !s.isRevoked);
+  }
+
+  /**
+   * Lists active share links for a specific resource
+   */
+  async listResourceShareLinks(resourceId: string): Promise<ShareLink[]> {
+    return Array.from(db.shareLinks.values()).filter((s) => s.resourceId === resourceId && !s.isRevoked);
   }
 }
 
