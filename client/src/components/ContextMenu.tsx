@@ -51,7 +51,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
           {item.separator && i > 0 && <div className="context-menu-sep" />}
           <button
             className={`context-menu-item${item.danger ? ' danger' : ''}`}
-            onClick={() => { item.onClick(); onClose(); }}
+            onClick={(e) => { e.stopPropagation(); item.onClick(); onClose(); }}
           >
             {item.icon}
             <span>{item.label}</span>

@@ -142,7 +142,8 @@ export const Explorer: React.FC<ExplorerProps> = ({
     onRefresh();
   };
 
-  const handleSoftDelete = async (id: string, type: 'file' | 'folder') => {
+  const handleSoftDelete = async (id: string, type: 'file' | 'folder', e?: React.MouseEvent) => {
+    e?.stopPropagation();
     try {
       await ApiClient.post('/api/v1/trash/soft-delete', { resourceId: id, resourceType: type });
       showToast(`Moved to trash`, 'info');
@@ -168,22 +169,31 @@ export const Explorer: React.FC<ExplorerProps> = ({
     onRefresh();
   };
 
-  const handleDownload = (fileId: string, fileName: string) => {
+  const handleDownload = (fileId: string, fileName: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const token = localStorage.getItem('bytestore_access_token');
     fetch(`/api/v1/files/${fileId}/download`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.blob())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.blob();
+      })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = fileName;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
         showToast('Download started', 'success');
       })
-      .catch(() => showToast('Download failed', 'error'));
+      .catch((err: any) => {
+        console.error('Download error:', err);
+        showToast('Download failed: ' + (err.message || 'Error'), 'error');
+      });
   };
 
   // Sort & Filter
@@ -547,7 +557,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
                   )}
 
                   {/* Actions */}
-                  <div className="file-card-actions">
+                  <div className="file-card-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       className={`file-card-action-btn star${file.isStarred ? ' starred' : ''}`}
                       onClick={(e) => handleToggleStarFile(file.id, e)}
@@ -557,28 +567,28 @@ export const Explorer: React.FC<ExplorerProps> = ({
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => handleDownload(file.id, file.name)}
+                      onClick={(e) => handleDownload(file.id, file.name, e)}
                       title="Download"
                     >
                       <Download size={15} />
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => onOpenShareModal(file.id, 'file')}
+                      onClick={(e) => { e.stopPropagation(); onOpenShareModal(file.id, 'file'); }}
                       title="Share"
                     >
                       <Share2 size={15} />
                     </button>
                     <button
                       className="file-card-action-btn"
-                      onClick={() => setVersionFile(file)}
+                      onClick={(e) => { e.stopPropagation(); setVersionFile(file); }}
                       title="Version History"
                     >
                       <History size={15} />
                     </button>
                     <button
                       className="file-card-action-btn danger"
-                      onClick={() => handleSoftDelete(file.id, 'file')}
+                      onClick={(e) => handleSoftDelete(file.id, 'file', e)}
                       title="Trash"
                     >
                       <Trash2 size={15} />
