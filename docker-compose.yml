@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytestorex-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: bytestorex_db
+      POSTGRES_USER: bytestorex_admin
+      POSTGRES_PASSWORD: bytestorex_password_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bytestorex_admin -d bytestorex_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bytestorex-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: bytestorex-minio
+    restart: always
+    entrypoint: sh
+    command: -c 'minio server /data --console-address ":9001"'
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password_2026
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Auto Bucket Initializer
+  minio-init-bucket:
+    image: minio/mc:latest
+    container_name: bytestorex-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minio_admin minio_password_2026;
+      /usr/bin/mc mb --ignore-existing myminio/bytestorex-bucket;
+      /usr/bin/mc anonymous set download myminio/bytestorex-bucket;
+      echo 'MinIO Bucket bytestorex-bucket initialized successfully.';
+      exit 0;
+      "
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -333,12 +333,6 @@ ByteStoreX/
     └── package.json
 ```
 
----
-
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for more information.
-
 <br />
 
 <div align="center">
