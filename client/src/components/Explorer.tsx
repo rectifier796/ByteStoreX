@@ -63,121 +63,40 @@ const formatDate = (dateStr: string) => {
   return d.toLocaleDateString();
 };
 
-const getFileIcon = (mimeType: string, fileName: string = '', size = 22) => {
-  const m = (mimeType || '').toLowerCase();
-  const ext = fileName.split('.').pop()?.toLowerCase() || '';
-
-  if (m.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff'].includes(ext)) {
-    return <ImageIcon size={size} color="#ec4899" />;
-  }
-  if (m.startsWith('video/') || ['mp4', 'webm', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'm4v', '3gp'].includes(ext)) {
-    return <Video size={size} color="#f59e0b" />;
-  }
-  if (m.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) {
-    return <Music size={size} color="#10b981" />;
-  }
-  if (
-    m.includes('json') ||
-    m.includes('javascript') ||
-    m.includes('typescript') ||
-    m.includes('html') ||
-    m.includes('css') ||
-    m.includes('xml') ||
-    ['js', 'ts', 'jsx', 'tsx', 'json', 'html', 'css', 'py', 'java', 'c', 'cpp', 'cs', 'go', 'rs', 'php', 'sh', 'bash', 'sql', 'yaml', 'yml', 'md', 'xml'].includes(ext)
-  ) {
+const getFileIcon = (mimeType: string, size = 22) => {
+  const m = mimeType.toLowerCase();
+  if (m.startsWith('image/')) return <ImageIcon size={size} color="#ec4899" />;
+  if (m.startsWith('video/')) return <Video size={size} color="#f59e0b" />;
+  if (m.startsWith('audio/')) return <Music size={size} color="#10b981" />;
+  if (m.includes('json') || m.includes('javascript') || m.includes('typescript') || m.includes('html') || m.includes('css'))
     return <FileCode size={size} color="#3b82f6" />;
-  }
-  if (
-    m.includes('zip') ||
-    m.includes('tar') ||
-    m.includes('rar') ||
-    m.includes('7z') ||
-    m.includes('gzip') ||
-    m.includes('compressed') ||
-    ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'tgz'].includes(ext)
-  ) {
+  if (m.includes('zip') || m.includes('tar') || m.includes('rar') || m.includes('7z') || m.includes('gzip'))
     return <FileArchive size={size} color="#f97316" />;
-  }
-  if (
-    m.includes('pdf') ||
-    m.includes('word') ||
-    m.includes('text') ||
-    m.includes('plain') ||
-    m.includes('document') ||
-    m.includes('sheet') ||
-    m.includes('presentation') ||
-    ['pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'rtf', 'odt', 'csv', 'log'].includes(ext)
-  ) {
+  if (m.includes('pdf') || m.includes('word') || m.includes('text') || m.includes('plain'))
     return <FileText size={size} color="#8b5cf6" />;
-  }
   return <FileIcon size={size} color="#6b7280" />;
 };
 
-const getFileColor = (mimeType: string, fileName: string = ''): string => {
-  const m = (mimeType || '').toLowerCase();
-  const ext = fileName.split('.').pop()?.toLowerCase() || '';
-
-  if (m.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return '#ec4899';
-  if (m.startsWith('video/') || ['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) return '#f59e0b';
-  if (m.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '#10b981';
-  if (
-    m.includes('json') ||
-    m.includes('javascript') ||
-    m.includes('typescript') ||
-    m.includes('html') ||
-    ['js', 'ts', 'jsx', 'tsx', 'json', 'html', 'css', 'py', 'java', 'c', 'cpp', 'cs', 'go', 'rs', 'php', 'sh', 'sql', 'yaml', 'yml'].includes(ext)
-  )
+const getFileColor = (mimeType: string): string => {
+  const m = mimeType.toLowerCase();
+  if (m.startsWith('image/')) return '#ec4899';
+  if (m.startsWith('video/')) return '#f59e0b';
+  if (m.startsWith('audio/')) return '#10b981';
+  if (m.includes('json') || m.includes('javascript') || m.includes('typescript') || m.includes('html'))
     return '#3b82f6';
-  if (m.includes('zip') || m.includes('tar') || m.includes('rar') || ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '#f97316';
-  if (m.includes('pdf') || m.includes('word') || m.includes('text') || ['pdf', 'txt', 'doc', 'docx', 'csv'].includes(ext)) return '#8b5cf6';
+  if (m.includes('zip') || m.includes('tar') || m.includes('rar')) return '#f97316';
+  if (m.includes('pdf') || m.includes('word') || m.includes('text')) return '#8b5cf6';
   return '#6b7280';
 };
 
 const matchesFilter = (file: FileMetadata, filter: FilterType): boolean => {
   if (filter === 'all') return true;
-  const m = (file.mimeType || '').toLowerCase();
-  const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
-
-  if (filter === 'images') {
-    return m.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff'].includes(ext);
-  }
-  if (filter === 'videos') {
-    return m.startsWith('video/') || ['mp4', 'webm', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'm4v', '3gp'].includes(ext);
-  }
-  if (filter === 'documents') {
-    return (
-      m.includes('pdf') ||
-      m.includes('text') ||
-      m.includes('word') ||
-      m.includes('plain') ||
-      m.includes('document') ||
-      m.includes('sheet') ||
-      m.includes('presentation') ||
-      ['pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'rtf', 'odt', 'csv', 'log'].includes(ext)
-    );
-  }
-  if (filter === 'archives') {
-    return (
-      m.includes('zip') ||
-      m.includes('tar') ||
-      m.includes('rar') ||
-      m.includes('7z') ||
-      m.includes('gzip') ||
-      m.includes('compressed') ||
-      ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'tgz'].includes(ext)
-    );
-  }
-  if (filter === 'code') {
-    return (
-      m.includes('json') ||
-      m.includes('javascript') ||
-      m.includes('typescript') ||
-      m.includes('html') ||
-      m.includes('css') ||
-      m.includes('xml') ||
-      ['js', 'ts', 'jsx', 'tsx', 'json', 'html', 'css', 'py', 'java', 'c', 'cpp', 'cs', 'go', 'rs', 'php', 'sh', 'bash', 'sql', 'yaml', 'yml', 'md', 'xml'].includes(ext)
-    );
-  }
+  const m = file.mimeType.toLowerCase();
+  if (filter === 'images') return m.startsWith('image/');
+  if (filter === 'videos') return m.startsWith('video/');
+  if (filter === 'documents') return m.includes('pdf') || m.includes('text') || m.includes('word') || m.includes('plain');
+  if (filter === 'archives') return m.includes('zip') || m.includes('tar') || m.includes('rar') || m.includes('7z');
+  if (filter === 'code') return m.includes('json') || m.includes('javascript') || m.includes('typescript') || m.includes('html') || m.includes('css');
   return true;
 };
 
@@ -578,7 +497,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
           </div>
           <div className={`file-grid${viewMode === 'list' ? ' list' : ''}`}>
             {filteredFiles.map((file) => {
-              const color = getFileColor(file.mimeType, file.name);
+              const color = getFileColor(file.mimeType);
               return (
                 <div
                   key={file.id}
@@ -599,7 +518,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
                       flexShrink: 0,
                     }}
                   >
-                    {getFileIcon(file.mimeType, file.name, 19)}
+                    {getFileIcon(file.mimeType, 19)}
                   </div>
 
                   {/* Info */}
