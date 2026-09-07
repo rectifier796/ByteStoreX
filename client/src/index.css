@@ -329,6 +329,26 @@ input, select, textarea {
 }
 
 .logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text-subtle);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+.logout-btn:hover {
+  color: #fca5a5;
+  background: var(--status-danger-bg);
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.logout-btn {
   padding: 6px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
