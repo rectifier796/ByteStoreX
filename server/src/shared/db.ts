@@ -26,7 +26,7 @@ class InMemoryDB {
     this.initPostgresSync();
   }
 
-  private async initPostgresSync() {
+  public async initPostgresSync() {
     try {
       // 1. Seed defaults into PostgreSQL database if users table is empty
       const existingUsers = await postgresRepo.getAllUsers();

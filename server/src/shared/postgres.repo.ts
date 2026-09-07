@@ -116,6 +116,16 @@ export class PostgresRepository {
       );
     }
 
+    // Ensure owner user exists before setting FK
+    if (file.ownerId) {
+      await pgDb.query(
+        `INSERT INTO users (id, email, name, password_hash, role, status, storage_used_bytes, quota_bytes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'user', 'active', 0, 10737418240, $5, $5)
+         ON CONFLICT (id) DO NOTHING;`,
+        [file.ownerId, `${file.ownerId}@bytestorex.io`, 'User', 'nopassword', file.createdAt || new Date().toISOString()]
+      );
+    }
+
     await pgDb.query(
       `INSERT INTO files (
          id, name, folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
