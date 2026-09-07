@@ -21,8 +21,9 @@ function parseExpectedVersion(req: Request): number | undefined {
 filesRouter.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
-    const folderId = (req.query.folderId as string) || null;
-    const files = await filesService.listFiles(user.userId, user.role, folderId);
+    const isAll = req.query.all === 'true' || req.query.recursive === 'true';
+    const folderId = isAll ? undefined : (req.query.folderId !== undefined ? (req.query.folderId as string || null) : null);
+    const files = await filesService.listFiles(user.userId, user.role, folderId, isAll);
     res.json({ success: true, files });
   } catch (err) {
     next(err);

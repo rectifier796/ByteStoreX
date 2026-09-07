@@ -20,9 +20,10 @@ export class FilesService {
     }
   }
 
-  async listFiles(userId: string, userRole: string | undefined, folderId: string | null = null): Promise<FileMetadata[]> {
+  async listFiles(userId: string, userRole: string | undefined, folderId: string | null | undefined = null, recursive = false): Promise<FileMetadata[]> {
     return Array.from(db.files.values()).filter((f) => {
-      if (f.isTrashed || f.folderId !== folderId) return false;
+      if (f.isTrashed) return false;
+      if (!recursive && folderId !== undefined && f.folderId !== folderId) return false;
       // Allow if owner, admin, has permissions, or seeded demo files
       if (f.ownerId === userId || userRole === 'admin' || f.ownerId === 'usr-demo-002') return true;
       try {

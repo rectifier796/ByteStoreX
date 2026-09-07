@@ -65,7 +65,7 @@ const MainWorkspace: React.FC = () => {
         setBreadcrumbs([{ id: null, name: 'Home' }, { id: null, name: `Search: "${searchQuery}"` }]);
       } else {
         const folderUrl = currentFolderId ? `/api/v1/folders?parentId=${currentFolderId}` : '/api/v1/folders';
-        const fileUrl = currentFolderId ? `/api/v1/files?folderId=${currentFolderId}` : '/api/v1/files';
+        const fileUrl = currentFolderId ? `/api/v1/files?folderId=${currentFolderId}` : '/api/v1/files?all=true';
 
         const [foldersRes, filesRes] = await Promise.all([
           ApiClient.get<{ success: boolean; folders: Folder[]; breadcrumbs: Array<{ id: string | null; name: string }> }>(
