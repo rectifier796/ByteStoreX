@@ -21,12 +21,23 @@ class InMemoryDB {
   public jobs: Map<string, Job> = new Map();
   public auditLogs: AuditLog[] = [];
 
+  // Guard: ensure initPostgresSync only runs once
+  private _syncPromise: Promise<void> | null = null;
+
   constructor() {
+    // Only seed defaults into in-memory maps.
+    // PostgreSQL sync is deferred to server.ts bootstrap (after migrations).
     this.seedDefaults();
-    this.initPostgresSync();
   }
 
   public async initPostgresSync() {
+    // Guard: only ever run once. Subsequent calls return the same promise.
+    if (this._syncPromise) return this._syncPromise;
+    this._syncPromise = this._doPostgresSync();
+    return this._syncPromise;
+  }
+
+  private async _doPostgresSync() {
     try {
       // 1. Seed defaults into PostgreSQL database if users table is empty
       const existingUsers = await postgresRepo.getAllUsers();
@@ -44,27 +55,34 @@ class InMemoryDB {
           await postgresRepo.saveFile(f);
         }
       } else {
-        // Load existing PostgreSQL records into in-memory cache maps
+        // Load ALL existing PostgreSQL records into in-memory cache maps,
+        // overwriting the seeded defaults.
+        this.users.clear();
         for (const u of existingUsers) {
           this.users.set(u.id, u);
         }
         const pgFolders = await postgresRepo.getAllFolders();
+        this.folders.clear();
         for (const fld of pgFolders) {
           this.folders.set(fld.id, fld);
         }
         const pgBlobs = await postgresRepo.getAllBlobs();
+        this.blobs.clear();
         for (const b of pgBlobs) {
           this.blobs.set(b.id, b);
         }
         const pgFiles = await postgresRepo.getAllFiles();
+        this.files.clear();
         for (const f of pgFiles) {
           this.files.set(f.id, f);
         }
         const pgShareLinks = await postgresRepo.getAllShareLinks();
+        this.shareLinks.clear();
         for (const sl of pgShareLinks) {
           this.shareLinks.set(sl.id, sl);
         }
         const pgPermissions = await postgresRepo.getAllFilePermissions();
+        this.permissions.clear();
         for (const perm of pgPermissions) {
           this.permissions.set(perm.id, perm);
         }

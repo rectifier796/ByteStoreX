@@ -260,9 +260,9 @@ export class JobsEngine extends EventEmitter {
     return { recoveredCount, failedCount, jobIds: processedJobIds };
   }
 
-  async listJobs(ownerId: string): Promise<Job[]> {
+  async listJobs(ownerId: string, userRole?: string): Promise<Job[]> {
     return Array.from(db.jobs.values())
-      .filter((j) => j.ownerId === ownerId)
+      .filter((j) => userRole === 'admin' || j.ownerId === ownerId || !j.ownerId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 

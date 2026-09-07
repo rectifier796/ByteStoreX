@@ -1,20 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Play, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Zap, Shield, Package } from 'lucide-react';
+import { Cpu, Loader2, RefreshCw, Zap, Shield, Package, FileText } from 'lucide-react';
 import { ApiClient } from '../api/client.js';
 import { Job } from '../types/index.js';
 
-const statusConfig: Record<Job['status'], { label: string; badgeClass: string }> = {
+const statusConfig: Record<string, { label: string; badgeClass: string }> = {
   completed: { label: 'Completed', badgeClass: 'badge-success' },
   processing: { label: 'Processing', badgeClass: 'badge-primary' },
+  pending: { label: 'Pending', badgeClass: 'badge-warning' },
   queued: { label: 'Queued', badgeClass: 'badge-warning' },
   failed: { label: 'Failed', badgeClass: 'badge-danger' },
 };
 
-const jobTypeIcon: Record<Job['type'], React.ReactNode> = {
-  zip_bundle: <Package size={16} color="#10b981" />,
-  virus_scan: <Shield size={16} color="#3b82f6" />,
-  trash_cleanup: <Zap size={16} color="#f59e0b" />,
-  thumbnail_gen: <Cpu size={16} color="#d946ef" />,
+const getJobTypeIcon = (type: string) => {
+  switch (type) {
+    case 'zip_bundle':
+    case 'compress_archive':
+      return <Package size={16} color="#10b981" />;
+    case 'virus_scan':
+    case 'integrity_check':
+      return <Shield size={16} color="#3b82f6" />;
+    case 'trash_cleanup':
+    case 'temp_cleanup':
+      return <Zap size={16} color="#f59e0b" />;
+    case 'thumbnail_gen':
+    case 'generate_thumbnail':
+      return <Cpu size={16} color="#d946ef" />;
+    default:
+      return <FileText size={16} color="var(--accent-primary)" />;
+  }
 };
 
 export const JobsMonitor: React.FC = () => {
@@ -26,7 +39,8 @@ export const JobsMonitor: React.FC = () => {
     try {
       const res = await ApiClient.get<{ success: boolean; jobs: Job[] }>('/api/v1/jobs');
       setJobs(res.jobs || []);
-    } catch {
+    } catch (e) {
+      console.error('Fetch jobs error:', e);
       setJobs([]);
     } finally {
       setLoading(false);
@@ -39,7 +53,7 @@ export const JobsMonitor: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleEnqueueJob = async (type: Job['type']) => {
+  const handleEnqueueJob = async (type: string) => {
     setEnqueueing(type);
     try {
       await ApiClient.post('/api/v1/jobs/enqueue', {
@@ -54,7 +68,10 @@ export const JobsMonitor: React.FC = () => {
     }
   };
 
-  const activeCount = jobs.filter((j) => j.status === 'processing' || j.status === 'queued').length;
+  const activeCount = jobs.filter((j) => {
+    const st = (j.status || '').toLowerCase();
+    return st === 'processing' || st === 'pending' || st === 'queued';
+  }).length;
 
   return (
     <div className="view-area animate-fade-in">
@@ -68,15 +85,15 @@ export const JobsMonitor: React.FC = () => {
             )}
             Background Jobs
             {activeCount > 0 && (
-              <span className="badge badge-primary" style={{ marginLeft: '4px' }}>{activeCount} active</span>
+              <span className="badge badge-primary" style={{ marginLeft: '6px' }}>{activeCount} active</span>
             )}
           </h1>
           <p className="page-subtitle">
-            Event-driven async worker queue without external message brokers. SKIP LOCKED claim strategy.
+            Event-driven background worker queue. Real-time status and task execution tracking.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {(['zip_bundle', 'virus_scan', 'trash_cleanup', 'thumbnail_gen'] as Job['type'][]).map((type) => (
+          {['thumbnail_gen', 'integrity_check', 'trash_cleanup', 'zip_bundle'].map((type) => (
             <button
               key={type}
               className="btn btn-ghost btn-sm"
@@ -84,7 +101,7 @@ export const JobsMonitor: React.FC = () => {
               disabled={enqueueing === type}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              {jobTypeIcon[type]}
+              {getJobTypeIcon(type)}
               {type.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
             </button>
           ))}
@@ -108,7 +125,15 @@ export const JobsMonitor: React.FC = () => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {jobs.map((job) => {
-            const cfg = statusConfig[job.status];
+            const rawStatus = (job.status || 'pending').toLowerCase();
+            const cfg = statusConfig[rawStatus] || {
+              label: rawStatus.toUpperCase(),
+              badgeClass: 'badge-primary',
+            };
+            const isProcessing = rawStatus === 'processing';
+            const isCompleted = rawStatus === 'completed';
+            const isFailed = rawStatus === 'failed';
+
             return (
               <div key={job.id} className="glass-card" style={{ padding: '16px 18px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
@@ -124,30 +149,30 @@ export const JobsMonitor: React.FC = () => {
                       flexShrink: 0,
                     }}
                   >
-                    {jobTypeIcon[job.type]}
+                    {getJobTypeIcon(job.type)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                        {job.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {(job.type || 'Job').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                       </span>
                       <span className={`badge ${cfg.badgeClass}`}>
-                        {job.status === 'processing' && (
+                        {isProcessing && (
                           <Loader2 size={10} style={{ animation: 'spin 1.5s linear infinite' }} />
                         )}
                         {cfg.label}
-                        {job.status === 'processing' && ` ${job.progress}%`}
+                        {isProcessing && ` ${job.progress || 0}%`}
                       </span>
                     </div>
                     <div
                       className="mono"
                       style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '2px' }}
                     >
-                      {job.id.substring(0, 22)}…
+                      {job.id}
                     </div>
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textAlign: 'right', flexShrink: 0 }}>
-                    {new Date(job.createdAt).toLocaleTimeString()}
+                    {job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : ''}
                   </div>
                 </div>
 
@@ -164,11 +189,11 @@ export const JobsMonitor: React.FC = () => {
                   <div
                     style={{
                       height: '100%',
-                      width: `${job.progress}%`,
+                      width: `${isCompleted ? 100 : job.progress || 0}%`,
                       background:
-                        job.status === 'completed'
+                        isCompleted
                           ? 'var(--status-success)'
-                          : job.status === 'failed'
+                          : isFailed
                           ? 'var(--status-danger)'
                           : 'var(--accent-gradient)',
                       borderRadius: 'var(--radius-full)',
@@ -181,7 +206,7 @@ export const JobsMonitor: React.FC = () => {
                   className="mono"
                   style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'flex', justifyContent: 'space-between' }}
                 >
-                  <span>Req: {job.requestId}</span>
+                  <span>Req: {job.requestId || 'sys'}</span>
                   {job.error && <span style={{ color: '#fca5a5' }}>{job.error}</span>}
                 </div>
               </div>

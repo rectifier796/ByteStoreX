@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
-import { Search, Upload, FolderPlus, X, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Upload, FolderPlus, X, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { useTheme } from '../context/ThemeContext.js';
 
 interface NavbarProps {
   searchQuery: string;
@@ -19,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="navbar">
@@ -70,6 +72,23 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="navbar-spacer" />
 
       <div className="navbar-actions">
+        <button
+          className="btn btn-ghost"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          id="theme-toggle-btn"
+          style={{ gap: '6px' }}
+        >
+          {theme === 'dark' ? (
+            <Sun size={16} style={{ color: '#f59e0b' }} />
+          ) : (
+            <Moon size={16} style={{ color: '#6366f1' }} />
+          )}
+          <span style={{ display: window.innerWidth > 768 ? 'inline' : 'none' }}>
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </span>
+        </button>
+
         <button className="btn btn-ghost" onClick={onOpenCreateFolder} id="create-folder-btn">
           <FolderPlus size={16} />
           <span style={{ display: window.innerWidth > 900 ? 'inline' : 'none' }}>New Folder</span>

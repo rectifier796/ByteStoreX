@@ -132,47 +132,62 @@ export class PostgresRepository {
 
     await pgDb.query(
       `INSERT INTO files (
-         id, name, folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
-         current_version, tags, created_at, updated_at
+         id, name, original_name, mime_type, size, storage_path, checksum,
+         folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
+         current_version, version, tags, created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
+         original_name = EXCLUDED.original_name,
+         mime_type = EXCLUDED.mime_type,
+         size = EXCLUDED.size,
+         storage_path = EXCLUDED.storage_path,
+         checksum = EXCLUDED.checksum,
          folder_id = EXCLUDED.folder_id,
          active_blob_id = EXCLUDED.active_blob_id,
          is_starred = EXCLUDED.is_starred,
          is_trashed = EXCLUDED.is_trashed,
          trashed_at = EXCLUDED.trashed_at,
          current_version = EXCLUDED.current_version,
+         version = EXCLUDED.version,
          tags = EXCLUDED.tags,
          updated_at = EXCLUDED.updated_at;`,
       [
-        file.id,
-        file.name,
-        file.folderId || null,
-        file.ownerId,
-        blobId || null,
-        file.isStarred || false,
-        file.isTrashed || false,
-        file.trashedAt || null,
-        file.version || 1,
-        file.tags || [],
-        file.createdAt || new Date().toISOString(),
-        file.updatedAt || new Date().toISOString(),
+        file.id,                                          // $1
+        file.name,                                         // $2
+        file.originalName || file.name,                   // $3
+        file.mimeType || 'application/octet-stream',       // $4
+        file.size || 0,                                    // $5
+        file.storagePath || '',                            // $6
+        file.checksum || blobId || '',                     // $7
+        file.folderId || null,                             // $8
+        file.ownerId,                                      // $9
+        blobId || null,                                    // $10
+        file.isStarred || false,                           // $11
+        file.isTrashed || false,                           // $12
+        file.trashedAt || null,                            // $13
+        file.version || 1,                                 // $14 (used for both current_version and version)
+        file.tags || [],                                   // $15
+        file.createdAt || new Date().toISOString(),        // $16
+        file.updatedAt || new Date().toISOString(),        // $17
       ]
     );
   }
 
   async getAllFiles(): Promise<FileMetadata[]> {
     const res = await pgDb.query(
-      `SELECT f.id, f.name, f.name as "originalName", f.folder_id as "folderId", f.owner_id as "ownerId", 
+      `SELECT f.id, f.name, 
+              COALESCE(f.original_name, f.name) as "originalName",
+              f.folder_id as "folderId", f.owner_id as "ownerId", 
               f.active_blob_id as "activeBlobId", f.is_starred as "isStarred", f.is_trashed as "isTrashed", 
-              f.trashed_at as "trashedAt", f.current_version as "version", f.tags, f.created_at as "createdAt", 
-              f.updated_at as "updatedAt",
-              COALESCE(b.storage_path, '') as "storagePath",
-              COALESCE(b.size_bytes, 0) as "size",
-              COALESCE(b.mime_type, 'application/octet-stream') as "mimeType",
-              COALESCE(b.checksum, '') as "checksum"
+              f.trashed_at as "trashedAt", 
+              COALESCE(f.current_version, f.version, 1) as "version",
+              f.tags, f.created_at as "createdAt", f.updated_at as "updatedAt",
+              COALESCE(f.storage_path, b.storage_path, '') as "storagePath",
+              COALESCE(f.size, b.size_bytes, 0) as "size",
+              COALESCE(f.mime_type, b.mime_type, 'application/octet-stream') as "mimeType",
+              COALESCE(f.checksum, b.checksum, '') as "checksum"
        FROM files f
        LEFT JOIN blobs b ON f.active_blob_id = b.id;`
     );
@@ -193,7 +208,10 @@ export class PostgresRepository {
     await pgDb.query(
       `INSERT INTO file_versions (id, file_id, blob_id, version_number, size_bytes, created_by, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (id) DO NOTHING;`,
+       ON CONFLICT (id) DO UPDATE SET
+         blob_id = EXCLUDED.blob_id,
+         size_bytes = EXCLUDED.size_bytes;
+       `,
       [
         version.id,
         version.fileId,
