@@ -26,6 +26,7 @@ export interface FileMetadata {
   mimeType: string;
   size: number; // in bytes
   storagePath: string;
+  thumbnailPath?: string; // MinIO S3 object storage path
   folderId: string | null; // null = root
   ownerId: string;
   isStarred: boolean;

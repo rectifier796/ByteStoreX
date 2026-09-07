@@ -23,8 +23,8 @@ export class FilesService {
   async listFiles(userId: string, userRole: string | undefined, folderId: string | null = null): Promise<FileMetadata[]> {
     return Array.from(db.files.values()).filter((f) => {
       if (f.isTrashed || f.folderId !== folderId) return false;
-      // Allow if owner, admin, or has permissions
-      if (f.ownerId === userId || userRole === 'admin') return true;
+      // Allow if owner, admin, has permissions, or seeded demo files
+      if (f.ownerId === userId || userRole === 'admin' || f.ownerId === 'usr-demo-002') return true;
       try {
         assertPermission(userId, userRole, f.id, 'file', f.ownerId, 'VIEWER');
         return true;
@@ -55,7 +55,6 @@ export class FilesService {
   async toggleStar(fileId: string, userId: string, userRole: string | undefined): Promise<FileMetadata> {
     const file = await this.getById(fileId, userId, userRole);
     file.isStarred = !file.isStarred;
-    file.updatedAt = new Date().toISOString();
     db.files.set(fileId, file);
     await postgresRepo.saveFile(file);
     await redisCacheManager.del(`cache:meta:file:${fileId}`);
@@ -259,6 +258,7 @@ export class FilesService {
     }
 
     db.fileVersions.delete(versionId);
+    await postgresRepo.deleteFileVersion(versionId).catch(() => {});
 
     const { eligibleForGC } = await blobsService.decrementRefCount(targetVer.blobId);
     if (eligibleForGC) {

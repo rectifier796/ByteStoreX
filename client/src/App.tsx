@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { ToastProvider } from './context/ToastContext.js';
+import { ThemeProvider } from './context/ThemeContext.js';
 import { Sidebar, ActiveTab } from './components/Sidebar.js';
 import { Navbar } from './components/Navbar.js';
 import { Explorer } from './components/Explorer.js';
@@ -236,10 +237,12 @@ const MainWorkspace: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <MainWorkspace />
-      </ToastProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <MainWorkspace />
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 };

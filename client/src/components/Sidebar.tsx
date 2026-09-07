@@ -10,8 +10,11 @@ import {
   LogOut,
   PieChart,
   Star,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { useTheme } from '../context/ThemeContext.js';
 import { QuotaInfo } from '../types/index.js';
 
 export type ActiveTab = 'explorer' | 'starred' | 'shared' | 'trash' | 'jobs' | 'audit' | 'quota';
@@ -36,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   trashCount = 0,
 }) => {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const mainNav = [
     { id: 'explorer' as ActiveTab, label: 'My Files', icon: HardDrive },
@@ -130,6 +134,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="user-name">{user.name || user.email || 'User'}</div>
             <div className="user-role">{user.role}</div>
           </div>
+          <button
+            className="logout-btn"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            style={{ marginRight: '2px' }}
+          >
+            {theme === 'dark' ? (
+              <Sun size={15} style={{ color: '#f59e0b' }} />
+            ) : (
+              <Moon size={15} style={{ color: '#6366f1' }} />
+            )}
+          </button>
           <button className="logout-btn" onClick={logout} title="Sign out">
             <LogOut size={15} />
           </button>

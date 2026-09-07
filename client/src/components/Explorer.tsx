@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { PdfThumbnail } from './PdfThumbnail';
 import {
   Folder as FolderIcon,
   File as FileIcon,
@@ -206,14 +207,18 @@ export const Explorer: React.FC<ExplorerProps> = ({
     .sort((a, b) => {
       if (sortKey === 'name') return a.name.localeCompare(b.name);
       if (sortKey === 'size') return b.size - a.size;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      const dateA = new Date(a.createdAt || a.updatedAt).getTime();
+      const dateB = new Date(b.createdAt || b.updatedAt).getTime();
+      return dateB - dateA;
     });
 
   const filteredFolders = folders
     .filter((f) => (starredOnly ? f.isStarred : true))
     .sort((a, b) => {
       if (sortKey === 'name') return a.name.localeCompare(b.name);
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      const dateA = new Date(a.createdAt || a.updatedAt).getTime();
+      const dateB = new Date(b.createdAt || b.updatedAt).getTime();
+      return dateB - dateA;
     });
 
   const buildFileContextMenu = (file: FileMetadata): ContextMenuItem[] => [
@@ -498,6 +503,9 @@ export const Explorer: React.FC<ExplorerProps> = ({
           <div className={`file-grid${viewMode === 'list' ? ' list' : ''}`}>
             {filteredFiles.map((file) => {
               const color = getFileColor(file.mimeType);
+              const token = localStorage.getItem('bytestore_access_token') || '';
+              const thumbnailUrl = `/api/v1/files/${file.id}/thumbnail?token=${encodeURIComponent(token)}&v=${encodeURIComponent(file.updatedAt || file.id)}`;
+
               return (
                 <div
                   key={file.id}
@@ -505,110 +513,142 @@ export const Explorer: React.FC<ExplorerProps> = ({
                   onDoubleClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
                   onContextMenu={(e) => handleContextMenu(e, buildFileContextMenu(file))}
                 >
-                  {/* Icon */}
-                  <div
-                    style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '9px',
-                      background: `${color}18`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {getFileIcon(file.mimeType, 19)}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-                    {renamingId === file.id ? (
-                      <input
-                        className="inline-rename"
-                        type="text"
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleRenameSubmit(file.id, 'file');
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={() => handleRenameSubmit(file.id, 'file')}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <>
-                        <div className="file-name">{file.name}</div>
-                        <div className="file-meta">
-                          {formatSize(file.size)}
-                          {viewMode === 'list' && ` • ${file.mimeType.split('/').pop()?.toUpperCase()}`}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* List mode metadata */}
-                  {viewMode === 'list' && (
-                    <div className="list-meta-row">
-                      {file.version > 1 && (
-                        <span className="file-version-badge">v{file.version}</span>
+                  {/* Grid Thumbnail Box */}
+                  {viewMode === 'grid' && (
+                    <div className="file-card-thumbnail">
+                      {file.mimeType.includes('pdf') || /\.pdf$/i.test(file.name) ? (
+                        <PdfThumbnail fileId={file.id} token={token} fallbackUrl={thumbnailUrl} />
+                      ) : (
+                        <>
+                          <img
+                            src={thumbnailUrl}
+                            alt={file.name}
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                              const fallback = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div className="file-card-thumbnail-fallback" style={{ display: 'none', background: `${color}15` }}>
+                            <div className="file-card-thumbnail-icon" style={{ background: `${color}25` }}>
+                              {getFileIcon(file.mimeType, 26)}
+                            </div>
+                            <span className="file-card-thumbnail-ext" style={{ color }}>
+                              {file.name.split('.').pop()?.toUpperCase() || 'FILE'}
+                            </span>
+                          </div>
+                        </>
                       )}
-                      <span>{formatDate(file.updatedAt)}</span>
                     </div>
                   )}
 
-                  {/* Grid mode version badge */}
-                  {viewMode === 'grid' && file.version > 1 && renamingId !== file.id && (
-                    <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                      <span className="file-version-badge">v{file.version}</span>
+                  <div className="file-card-body">
+                    {/* Icon */}
+                    <div
+                      style={{
+                        width: viewMode === 'grid' ? '28px' : '38px',
+                        height: viewMode === 'grid' ? '28px' : '38px',
+                        borderRadius: '8px',
+                        background: `${color}18`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {getFileIcon(file.mimeType, viewMode === 'grid' ? 15 : 19)}
                     </div>
-                  )}
 
-                  {/* Actions */}
-                  <div className="file-card-actions" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="file-card-action-btn"
-                      onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
-                      title="Preview"
-                    >
-                      <Eye size={15} />
-                    </button>
-                    <button
-                      className={`file-card-action-btn star${file.isStarred ? ' starred' : ''}`}
-                      onClick={(e) => handleToggleStarFile(file.id, e)}
-                      title="Star"
-                    >
-                      <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} />
-                    </button>
-                    <button
-                      className="file-card-action-btn"
-                      onClick={(e) => handleDownload(file.id, file.name, e)}
-                      title="Download"
-                    >
-                      <Download size={15} />
-                    </button>
-                    <button
-                      className="file-card-action-btn"
-                      onClick={(e) => { e.stopPropagation(); onOpenShareModal(file.id, 'file'); }}
-                      title="Share"
-                    >
-                      <Share2 size={15} />
-                    </button>
-                    <button
-                      className="file-card-action-btn"
-                      onClick={(e) => { e.stopPropagation(); setVersionFile(file); }}
-                      title="Version History"
-                    >
-                      <History size={15} />
-                    </button>
-                    <button
-                      className="file-card-action-btn danger"
-                      onClick={(e) => handleSoftDelete(file.id, 'file', e)}
-                      title="Trash"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {/* Info */}
+                    <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                      {renamingId === file.id ? (
+                        <input
+                          className="inline-rename"
+                          type="text"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameSubmit(file.id, 'file');
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onBlur={() => handleRenameSubmit(file.id, 'file')}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <>
+                          <div className="file-name">{file.name}</div>
+                          <div className="file-meta">
+                            {formatSize(file.size)}
+                            {viewMode === 'list' && ` • ${file.mimeType.split('/').pop()?.toUpperCase()}`}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* List mode metadata */}
+                    {viewMode === 'list' && (
+                      <div className="list-meta-row">
+                        {file.version > 1 && (
+                          <span className="file-version-badge">v{file.version}</span>
+                        )}
+                        <span>{formatDate(file.updatedAt)}</span>
+                      </div>
+                    )}
+
+                    {/* Grid mode version badge */}
+                    {viewMode === 'grid' && file.version > 1 && renamingId !== file.id && (
+                      <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10 }}>
+                        <span className="file-version-badge">v{file.version}</span>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="file-card-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="file-card-action-btn"
+                        onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
+                        title="Preview"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        className={`file-card-action-btn star${file.isStarred ? ' starred' : ''}`}
+                        onClick={(e) => handleToggleStarFile(file.id, e)}
+                        title="Star"
+                      >
+                        <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} />
+                      </button>
+                      <button
+                        className="file-card-action-btn"
+                        onClick={(e) => handleDownload(file.id, file.name, e)}
+                        title="Download"
+                      >
+                        <Download size={15} />
+                      </button>
+                      <button
+                        className="file-card-action-btn"
+                        onClick={(e) => { e.stopPropagation(); onOpenShareModal(file.id, 'file'); }}
+                        title="Share"
+                      >
+                        <Share2 size={15} />
+                      </button>
+                      <button
+                        className="file-card-action-btn"
+                        onClick={(e) => { e.stopPropagation(); setVersionFile(file); }}
+                        title="Version History"
+                      >
+                        <History size={15} />
+                      </button>
+                      <button
+                        className="file-card-action-btn danger"
+                        onClick={(e) => handleSoftDelete(file.id, 'file', e)}
+                        title="Trash"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

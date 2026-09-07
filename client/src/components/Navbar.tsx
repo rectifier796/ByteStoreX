@@ -1,5 +1,7 @@
-import React, { useRef, useState } from 'react';
-import { Search, Upload, FolderPlus, X, SortAsc, Filter } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Search, Upload, FolderPlus, X, LogOut, Sun, Moon } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.js';
+import { useTheme } from '../context/ThemeContext.js';
 
 interface NavbarProps {
   searchQuery: string;
@@ -17,6 +19,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentFolderName,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="navbar">
@@ -68,6 +72,23 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="navbar-spacer" />
 
       <div className="navbar-actions">
+        <button
+          className="btn btn-ghost"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          id="theme-toggle-btn"
+          style={{ gap: '6px' }}
+        >
+          {theme === 'dark' ? (
+            <Sun size={16} style={{ color: '#f59e0b' }} />
+          ) : (
+            <Moon size={16} style={{ color: '#6366f1' }} />
+          )}
+          <span style={{ display: window.innerWidth > 768 ? 'inline' : 'none' }}>
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </span>
+        </button>
+
         <button className="btn btn-ghost" onClick={onOpenCreateFolder} id="create-folder-btn">
           <FolderPlus size={16} />
           <span style={{ display: window.innerWidth > 900 ? 'inline' : 'none' }}>New Folder</span>
@@ -77,6 +98,48 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Upload size={16} />
           Upload
         </button>
+
+        {user && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              paddingLeft: '12px',
+              borderLeft: '1px solid var(--border-color)',
+              marginLeft: '4px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 10px 4px 6px',
+                borderRadius: 'var(--radius-full)',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '0.75rem' }}>
+                {(user.name || user.email || 'U').charAt(0).toUpperCase()}
+              </div>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                {user.name || user.email}
+              </span>
+            </div>
+
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={logout}
+              title="Sign Out"
+              style={{ padding: '6px 12px' }}
+            >
+              <LogOut size={14} />
+              <span>Logout</span>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

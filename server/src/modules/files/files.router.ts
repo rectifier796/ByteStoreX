@@ -2,6 +2,12 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { filesService } from './files.service.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { idempotencyMiddleware } from '../../core/idempotency.middleware.js';
+import fs from 'fs';
+import path from 'path';
+import { db } from '../../shared/db.js';
+import { config } from '../../config/index.js';
+import { storageService } from '../storage/storage.service.js';
+import { extractSampleText, generateContentAwareSvg } from '../../shared/thumbnail.utils.js';
 
 export const filesRouter = Router();
 
@@ -35,6 +41,73 @@ filesRouter.get('/:id', requireAuth, async (req: Request, res: Response, next: N
     const file = await filesService.getById(req.params.id, user.userId, user.role);
     res.setHeader('ETag', `"${file.version}"`);
     res.json({ success: true, file });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /:id/thumbnail - Stream thumbnail image for card boxes
+filesRouter.get('/:id/thumbnail', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fileId = req.params.id;
+    const file = db.files.get(fileId);
+    if (!file) {
+      return res.status(404).send('File not found');
+    }
+
+    // 1. Try fetching stored thumbnail from MinIO S3 object storage DB reference
+    const minioKeysToTry = [
+      file.thumbnailPath,
+      `minio://${config.minio.bucketName}/thumb_${fileId}_thumb_${fileId}.jpg`,
+      `minio://${config.minio.bucketName}/thumb_${fileId}_thumb_${fileId}.png`,
+      `minio://${config.minio.bucketName}/thumb_${fileId}_thumb_${fileId}.svg`,
+      `minio://${config.minio.bucketName}/thumb_${fileId}_thumb_${fileId}`
+    ].filter(Boolean) as string[];
+
+    for (const key of minioKeysToTry) {
+      try {
+        if (await storageService.fileExists(key)) {
+          const stream = await storageService.fetchFileStream(key);
+          const ext = file.name.split('.').pop()?.toLowerCase() || '';
+          let mime = 'image/svg+xml';
+          if (file.mimeType.startsWith('image/')) mime = file.mimeType;
+          else if (key.endsWith('.jpg') || key.endsWith('.jpeg') || file.mimeType.startsWith('video/') || ['mp4','mkv','avi','mov','webm'].includes(ext)) mime = 'image/jpeg';
+          else if (key.endsWith('.png')) mime = 'image/png';
+
+          res.setHeader('Content-Type', mime);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return stream.pipe(res);
+        }
+      } catch {
+        // try next key
+      }
+    }
+
+    // On-the-fly generation if background job hasn't completed yet
+    const isImage = file.mimeType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+    if (isImage) {
+      try {
+        const streamResult = await filesService.getStreamWithRange(file.id, (req as any).user.userId, (req as any).user.role);
+        res.setHeader('Content-Type', file.mimeType || 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        return streamResult.stream.pipe(res);
+      } catch (err) {
+        // fallback
+      }
+    }
+
+    let sampleText = '';
+    try {
+      sampleText = await extractSampleText(file.storagePath);
+    } catch {
+      // fallback
+    }
+
+    const svg = generateContentAwareSvg(file, sampleText);
+
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(svg);
   } catch (err) {
     next(err);
   }

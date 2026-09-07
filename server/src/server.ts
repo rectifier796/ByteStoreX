@@ -3,6 +3,8 @@ import { config } from './config/index.js';
 import { logger } from './core/logger.js';
 import { initMinioBucket } from './modules/storage/minio.init.js';
 import { runMigrations } from './migrations/migrator.js';
+import { db } from './shared/db.js';
+import { jobsEngine } from './modules/jobs/jobs.engine.js';
 
 async function bootstrap() {
   logger.info('Bootstrap', 'Initializing ByteStoreX Monolith Infrastructure...');
@@ -10,7 +12,17 @@ async function bootstrap() {
   // 1. Run database migrations (PostgreSQL)
   await runMigrations();
 
-  // 2. Initialize MinIO S3 bucket
+  // 2. Sync in-memory database cache from PostgreSQL after schema migrations complete
+  await db.initPostgresSync();
+
+  // Enqueue background thumbnail jobs for any files missing thumbnails
+  for (const file of db.files.values()) {
+    if (!file.tags || !file.tags.includes('has_thumbnail')) {
+      await jobsEngine.enqueue('thumbnail_gen', { fileId: file.id }, file.ownerId).catch(() => {});
+    }
+  }
+
+  // 3. Initialize MinIO S3 bucket
   await initMinioBucket();
 
   // 3. Start Express server listener

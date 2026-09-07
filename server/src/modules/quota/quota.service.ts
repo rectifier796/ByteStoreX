@@ -4,6 +4,7 @@ import { config } from '../../config/index.js';
 import { ValidationError } from '../../core/errors.js';
 import { auditService } from '../audit/audit.service.js';
 import { redisLockManager } from '../../shared/redis.lock.js';
+import { postgresRepo } from '../../shared/postgres.repo.js';
 
 export class QuotaService {
   async getUserQuota(userId: string): Promise<QuotaInfo> {
@@ -42,8 +43,21 @@ export class QuotaService {
     }
 
     const user = db.users.get(userId);
-    const totalQuotaBytes = user ? user.quotaBytes || config.defaultQuota : config.defaultQuota;
-    const usedBytes = user ? Math.max(user.storageUsedBytes || 0, calculatedUsedBytes) : calculatedUsedBytes;
+    const totalQuotaBytes = user ? Number(user.quotaBytes || config.defaultQuota) : config.defaultQuota;
+    let usedBytes = calculatedUsedBytes;
+
+    if (user) {
+      const stored = Number(user.storageUsedBytes || 0);
+      // Self-heal corrupted string concatenation values
+      if (stored > totalQuotaBytes || isNaN(stored)) {
+        user.storageUsedBytes = calculatedUsedBytes;
+        db.users.set(userId, user);
+        await postgresRepo.saveUser(user).catch(() => {});
+        usedBytes = calculatedUsedBytes;
+      } else {
+        usedBytes = Math.max(stored, calculatedUsedBytes);
+      }
+    }
 
     return {
       userId,
@@ -59,7 +73,8 @@ export class QuotaService {
    * Atomically checks and reserves storage quota for a user before accepting upload/copy.
    */
   async reserveQuota(userId: string, incomingBytes: number): Promise<QuotaInfo> {
-    if (incomingBytes < 0) {
+    const incBytes = Number(incomingBytes || 0);
+    if (incBytes < 0) {
       throw new ValidationError('Reserved bytes cannot be negative.');
     }
 
@@ -68,32 +83,33 @@ export class QuotaService {
 
     try {
       const user = db.users.get(userId);
-      const totalQuota = user ? user.quotaBytes || config.defaultQuota : config.defaultQuota;
-      const currentUsed = user ? user.storageUsedBytes || 0 : 0;
+      const totalQuota = user ? Number(user.quotaBytes || config.defaultQuota) : config.defaultQuota;
+      const currentUsed = user ? Number(user.storageUsedBytes || 0) : 0;
 
-      if (currentUsed + incomingBytes > totalQuota) {
+      if (currentUsed + incBytes > totalQuota) {
         await auditService.record({
           action: 'QUOTA_EXCEEDED',
           category: 'quota',
           actorId: userId,
           details: {
-            requestedBytes: incomingBytes,
+            requestedBytes: incBytes,
             currentUsedBytes: currentUsed,
             totalQuotaBytes: totalQuota,
-            overflowBytes: currentUsed + incomingBytes - totalQuota,
+            overflowBytes: currentUsed + incBytes - totalQuota,
           }
         });
 
-        const overflowMB = ((currentUsed + incomingBytes - totalQuota) / (1024 * 1024)).toFixed(2);
+        const overflowMB = ((currentUsed + incBytes - totalQuota) / (1024 * 1024)).toFixed(2);
         throw new ValidationError(
-          `Storage quota exceeded. Required: ${(incomingBytes / (1024 * 1024)).toFixed(2)} MB, Available: ${((totalQuota - currentUsed) / (1024 * 1024)).toFixed(2)} MB. (Exceeds by ${overflowMB} MB)`
+          `Storage quota exceeded. Required: ${(incBytes / (1024 * 1024)).toFixed(2)} MB, Available: ${((totalQuota - currentUsed) / (1024 * 1024)).toFixed(2)} MB. (Exceeds by ${overflowMB} MB)`
         );
       }
 
       if (user) {
-        user.storageUsedBytes = currentUsed + incomingBytes;
+        user.storageUsedBytes = currentUsed + incBytes;
         user.updatedAt = new Date().toISOString();
         db.users.set(userId, user);
+        await postgresRepo.saveUser(user).catch(() => {});
       }
 
       await auditService.record({
@@ -101,8 +117,8 @@ export class QuotaService {
         category: 'quota',
         actorId: userId,
         details: {
-          reservedBytes: incomingBytes,
-          newTotalUsedBytes: currentUsed + incomingBytes,
+          reservedBytes: incBytes,
+          newTotalUsedBytes: currentUsed + incBytes,
           quotaLimitBytes: totalQuota,
         }
       });
@@ -119,7 +135,8 @@ export class QuotaService {
    * Atomically releases storage quota for a user upon file purge or session cancellation.
    */
   async releaseQuota(userId: string, releasedBytes: number): Promise<QuotaInfo> {
-    if (releasedBytes <= 0) return this.getUserQuota(userId);
+    const relBytes = Number(releasedBytes || 0);
+    if (relBytes <= 0) return this.getUserQuota(userId);
 
     const lockKey = `lock:quota:${userId}`;
     const token = await redisLockManager.acquireLock(lockKey, 10);
@@ -127,10 +144,11 @@ export class QuotaService {
     try {
       const user = db.users.get(userId);
       if (user) {
-        const currentUsed = user.storageUsedBytes || 0;
-        user.storageUsedBytes = Math.max(0, currentUsed - releasedBytes);
+        const currentUsed = Number(user.storageUsedBytes || 0);
+        user.storageUsedBytes = Math.max(0, currentUsed - relBytes);
         user.updatedAt = new Date().toISOString();
         db.users.set(userId, user);
+        await postgresRepo.saveUser(user).catch(() => {});
       }
 
       await auditService.record({

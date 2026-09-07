@@ -4,6 +4,7 @@ import { redisLockManager } from '../../shared/redis.lock.js';
 import { storageService } from '../storage/storage.service.js';
 import { auditService } from '../audit/audit.service.js';
 import { logger } from '../../core/logger.js';
+import { postgresRepo } from '../../shared/postgres.repo.js';
 
 export interface RegisterBlobDTO {
   checksum: string;
@@ -30,6 +31,7 @@ export class BlobsService {
         // Increment reference count atomically
         existingBlob.referenceCount += 1;
         db.blobs.set(existingBlob.id, existingBlob);
+        await postgresRepo.saveBlob(existingBlob).catch(() => {});
 
         logger.info('BlobsService', `Content deduplication hit for SHA-256 '${checksum}'. Reference count incremented to ${existingBlob.referenceCount}.`);
 
@@ -48,6 +50,7 @@ export class BlobsService {
       };
 
       db.blobs.set(newBlob.id, newBlob);
+      await postgresRepo.saveBlob(newBlob).catch(() => {});
       logger.info('BlobsService', `Created new unique blob record '${newBlob.id}' for SHA-256 '${checksum}'.`);
 
       return { blob: newBlob, isExisting: false };

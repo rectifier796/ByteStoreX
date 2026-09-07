@@ -35,7 +35,11 @@ export class PostgresRepository {
   async getAllUsers(): Promise<User[]> {
     const res = await pgDb.query(`SELECT id, email, name, password_hash as "passwordHash", role, storage_used_bytes as "storageUsedBytes", quota_bytes as "quotaBytes", created_at as "createdAt", updated_at as "updatedAt" FROM users;`);
     if (!res) return [];
-    return res.rows;
+    return res.rows.map((u: any) => ({
+      ...u,
+      storageUsedBytes: Number(u.storageUsedBytes || 0),
+      quotaBytes: Number(u.quotaBytes || 10737418240),
+    }));
   }
 
   // ================= FOLDERS =================
@@ -101,23 +105,45 @@ export class PostgresRepository {
 
   // ================= FILES =================
   async saveFile(file: FileMetadata): Promise<void> {
+    let blobId = file.activeBlobId;
+    if (!blobId && file.checksum) {
+      blobId = file.checksum;
+    }
+
     // Ensure blob exists before setting FK
-    if (file.activeBlobId) {
+    if (blobId) {
       await pgDb.query(
         `INSERT INTO blobs (id, storage_path, size_bytes, mime_type, checksum, reference_count, created_at)
          VALUES ($1, $2, $3, $4, $5, 1, $6)
          ON CONFLICT (id) DO NOTHING;`,
-        [file.activeBlobId, file.storagePath, file.size, file.mimeType, file.checksum, file.createdAt]
+        [blobId, file.storagePath || '', file.size || 0, file.mimeType || 'application/octet-stream', file.checksum || blobId, file.createdAt || new Date().toISOString()]
       );
+    }
+
+    // Ensure owner user exists before setting FK
+    if (file.ownerId) {
+      await pgDb.query(
+        `INSERT INTO users (id, email, name, password_hash, role, status, storage_used_bytes, quota_bytes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'user', 'active', 0, 10737418240, $5, $5)
+         ON CONFLICT (id) DO NOTHING;`,
+        [file.ownerId, `${file.ownerId}@bytestorex.io`, 'User', 'nopassword', file.createdAt || new Date().toISOString()]
+      );
+    }
+
+    const tags = file.tags ? [...file.tags] : [];
+    if (file.thumbnailPath) {
+      const cleanTags = tags.filter((t) => !t.startsWith('thumb_path:'));
+      cleanTags.push(`thumb_path:${file.thumbnailPath}`);
+      file.tags = cleanTags;
     }
 
     await pgDb.query(
       `INSERT INTO files (
          id, name, original_name, mime_type, size, storage_path, checksum,
          folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
-         current_version, tags, created_at, updated_at
+         current_version, version, thumbnail_path, tags, created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17, $18)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          original_name = EXCLUDED.original_name,
@@ -131,45 +157,61 @@ export class PostgresRepository {
          is_trashed = EXCLUDED.is_trashed,
          trashed_at = EXCLUDED.trashed_at,
          current_version = EXCLUDED.current_version,
+         version = EXCLUDED.version,
+         thumbnail_path = EXCLUDED.thumbnail_path,
          tags = EXCLUDED.tags,
          updated_at = EXCLUDED.updated_at;`,
       [
-        file.id,
-        file.name,
-        file.originalName || file.name,
-        file.mimeType || 'application/octet-stream',
-        file.size || 0,
-        file.storagePath || '',
-        file.checksum || '',
-        file.folderId,
-        file.ownerId,
-        file.activeBlobId || null,
-        file.isStarred || false,
-        file.isTrashed || false,
-        file.trashedAt || null,
-        file.version || 1,
-        file.tags || [],
-        file.createdAt,
-        file.updatedAt,
+        file.id,                                          // $1
+        file.name,                                         // $2
+        file.originalName || file.name,                   // $3
+        file.mimeType || 'application/octet-stream',       // $4
+        file.size || 0,                                    // $5
+        file.storagePath || '',                            // $6
+        file.checksum || blobId || '',                     // $7
+        file.folderId || null,                             // $8
+        file.ownerId,                                      // $9
+        blobId || null,                                    // $10
+        file.isStarred || false,                           // $11
+        file.isTrashed || false,                           // $12
+        file.trashedAt || null,                            // $13
+        file.version || 1,                                 // $14 (used for both current_version and version)
+        file.thumbnailPath || null,                        // $15
+        file.tags || [],                                   // $16
+        file.createdAt || new Date().toISOString(),        // $17
+        file.updatedAt || new Date().toISOString(),        // $18
       ]
     );
   }
 
   async getAllFiles(): Promise<FileMetadata[]> {
     const res = await pgDb.query(
-      `SELECT f.id, f.name, f.name as "originalName", f.folder_id as "folderId", f.owner_id as "ownerId", 
+      `SELECT f.id, f.name, 
+              COALESCE(f.original_name, f.name) as "originalName",
+              f.folder_id as "folderId", f.owner_id as "ownerId", 
               f.active_blob_id as "activeBlobId", f.is_starred as "isStarred", f.is_trashed as "isTrashed", 
-              f.trashed_at as "trashedAt", f.current_version as "version", f.tags, f.created_at as "createdAt", 
-              f.updated_at as "updatedAt",
-              COALESCE(b.storage_path, '') as "storagePath",
-              COALESCE(b.size_bytes, 0) as "size",
-              COALESCE(b.mime_type, 'application/octet-stream') as "mimeType",
-              COALESCE(b.checksum, '') as "checksum"
+              f.trashed_at as "trashedAt", 
+              COALESCE(f.current_version, f.version, 1) as "version",
+              f.thumbnail_path as "thumbnailPath",
+              f.tags, f.created_at as "createdAt", f.updated_at as "updatedAt",
+              COALESCE(f.storage_path, b.storage_path, '') as "storagePath",
+              COALESCE(f.size, b.size_bytes, 0) as "size",
+              COALESCE(f.mime_type, b.mime_type, 'application/octet-stream') as "mimeType",
+              COALESCE(f.checksum, b.checksum, '') as "checksum"
        FROM files f
        LEFT JOIN blobs b ON f.active_blob_id = b.id;`
     );
     if (!res) return [];
-    return res.rows;
+    return res.rows.map((r: any) => {
+      const tags: string[] = r.tags || [];
+      const thumbTag = tags.find((t: string) => t.startsWith('thumb_path:'));
+      return {
+        ...r,
+        thumbnailPath: r.thumbnailPath || (thumbTag ? thumbTag.substring(11) : undefined),
+        size: Number(r.size || 0),
+        version: Number(r.version || 1),
+      };
+    });
   }
 
   async deleteFile(fileId: string): Promise<void> {
@@ -181,7 +223,10 @@ export class PostgresRepository {
     await pgDb.query(
       `INSERT INTO file_versions (id, file_id, blob_id, version_number, size_bytes, created_by, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (id) DO NOTHING;`,
+       ON CONFLICT (id) DO UPDATE SET
+         blob_id = EXCLUDED.blob_id,
+         size_bytes = EXCLUDED.size_bytes;
+       `,
       [
         version.id,
         version.fileId,
@@ -192,6 +237,10 @@ export class PostgresRepository {
         version.createdAt,
       ]
     );
+  }
+
+  async deleteFileVersion(versionId: string): Promise<void> {
+    await pgDb.query(`DELETE FROM file_versions WHERE id = $1;`, [versionId]);
   }
 
   // ================= SHARE LINKS =================

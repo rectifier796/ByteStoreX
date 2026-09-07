@@ -9,8 +9,8 @@ export const jobsRouter = Router();
 // GET /api/v1/jobs - List user jobs
 jobsRouter.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
-    const jobs = await jobsEngine.listJobs(ownerId);
+    const user = (req as any).user;
+    const jobs = await jobsEngine.listJobs(user.userId, user.role);
     res.json({ success: true, jobs });
   } catch (err) {
     next(err);
