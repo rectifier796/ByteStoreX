@@ -8,8 +8,8 @@ export const trashRouter = Router();
 
 trashRouter.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
-    const items = await trashService.listTrash(ownerId);
+    const user = (req as any).user;
+    const items = await trashService.listTrash(user.userId, user.role);
     res.json({ success: true, ...items });
   } catch (err) {
     next(err);
@@ -18,9 +18,9 @@ trashRouter.get('/', requireAuth, async (req: Request, res: Response, next: Next
 
 trashRouter.post('/soft-delete', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
+    const user = (req as any).user;
     const { resourceId, resourceType } = req.body;
-    await trashService.softDelete(resourceId, resourceType, ownerId);
+    await trashService.softDelete(resourceId, resourceType, user.userId, user.role);
     res.json({ success: true, message: 'Item moved to trash' });
   } catch (err) {
     next(err);
@@ -29,9 +29,9 @@ trashRouter.post('/soft-delete', requireAuth, async (req: Request, res: Response
 
 trashRouter.post('/restore', requireAuth, idempotencyMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
+    const user = (req as any).user;
     const { resourceId, resourceType } = req.body;
-    await trashService.restore(resourceId, resourceType, ownerId);
+    await trashService.restore(resourceId, resourceType, user.userId, user.role);
     res.json({ success: true, message: 'Item restored from trash' });
   } catch (err) {
     next(err);
@@ -40,8 +40,8 @@ trashRouter.post('/restore', requireAuth, idempotencyMiddleware, async (req: Req
 
 trashRouter.post('/restore-all', requireAuth, idempotencyMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
-    const restoredCount = await trashService.restoreAll(ownerId);
+    const user = (req as any).user;
+    const restoredCount = await trashService.restoreAll(user.userId, user.role);
     res.json({ success: true, message: `Restored ${restoredCount} items from trash.` });
   } catch (err) {
     next(err);
@@ -50,12 +50,12 @@ trashRouter.post('/restore-all', requireAuth, idempotencyMiddleware, async (req:
 
 trashRouter.delete('/purge/:resourceType/:resourceId', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
+    const user = (req as any).user;
     const { resourceType, resourceId } = req.params;
     if (resourceType !== 'file' && resourceType !== 'folder') {
       throw new Error('resourceType must be file or folder');
     }
-    await trashService.purgePermanent(resourceId, resourceType as 'file' | 'folder', ownerId);
+    await trashService.purgePermanent(resourceId, resourceType as 'file' | 'folder', user.userId, user.role);
     res.json({ success: true, message: 'Item permanently deleted' });
   } catch (err) {
     next(err);
@@ -64,8 +64,8 @@ trashRouter.delete('/purge/:resourceType/:resourceId', requireAuth, async (req: 
 
 trashRouter.delete('/empty', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ownerId = (req as any).user.userId;
-    const purgedCount = await trashService.emptyTrash(ownerId);
+    const user = (req as any).user;
+    const purgedCount = await trashService.emptyTrash(user.userId, user.role);
     res.json({ success: true, message: `Trash emptied (${purgedCount} items removed)` });
   } catch (err) {
     next(err);
