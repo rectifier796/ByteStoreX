@@ -55,7 +55,6 @@ export class FilesService {
   async toggleStar(fileId: string, userId: string, userRole: string | undefined): Promise<FileMetadata> {
     const file = await this.getById(fileId, userId, userRole);
     file.isStarred = !file.isStarred;
-    file.updatedAt = new Date().toISOString();
     db.files.set(fileId, file);
     await postgresRepo.saveFile(file);
     await redisCacheManager.del(`cache:meta:file:${fileId}`);

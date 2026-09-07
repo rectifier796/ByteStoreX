@@ -206,14 +206,18 @@ export const Explorer: React.FC<ExplorerProps> = ({
     .sort((a, b) => {
       if (sortKey === 'name') return a.name.localeCompare(b.name);
       if (sortKey === 'size') return b.size - a.size;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      const dateA = new Date(a.createdAt || a.updatedAt).getTime();
+      const dateB = new Date(b.createdAt || b.updatedAt).getTime();
+      return dateB - dateA;
     });
 
   const filteredFolders = folders
     .filter((f) => (starredOnly ? f.isStarred : true))
     .sort((a, b) => {
       if (sortKey === 'name') return a.name.localeCompare(b.name);
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      const dateA = new Date(a.createdAt || a.updatedAt).getTime();
+      const dateB = new Date(b.createdAt || b.updatedAt).getTime();
+      return dateB - dateA;
     });
 
   const buildFileContextMenu = (file: FileMetadata): ContextMenuItem[] => [

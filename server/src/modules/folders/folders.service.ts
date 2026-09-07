@@ -119,7 +119,6 @@ export class FoldersService {
   async toggleStar(folderId: string, userId: string, userRole: string | undefined): Promise<Folder> {
     const folder = await this.getById(folderId, userId, userRole);
     folder.isStarred = !folder.isStarred;
-    folder.updatedAt = new Date().toISOString();
     db.folders.set(folderId, folder);
     await postgresRepo.saveFolder(folder);
     await redisCacheManager.del(`cache:meta:folder:${folderId}`);
