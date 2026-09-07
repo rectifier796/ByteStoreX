@@ -35,7 +35,11 @@ export class PostgresRepository {
   async getAllUsers(): Promise<User[]> {
     const res = await pgDb.query(`SELECT id, email, name, password_hash as "passwordHash", role, storage_used_bytes as "storageUsedBytes", quota_bytes as "quotaBytes", created_at as "createdAt", updated_at as "updatedAt" FROM users;`);
     if (!res) return [];
-    return res.rows;
+    return res.rows.map((u: any) => ({
+      ...u,
+      storageUsedBytes: Number(u.storageUsedBytes || 0),
+      quotaBytes: Number(u.quotaBytes || 10737418240),
+    }));
   }
 
   // ================= FOLDERS =================
