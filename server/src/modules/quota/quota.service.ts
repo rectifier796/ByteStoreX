@@ -4,6 +4,7 @@ import { config } from '../../config/index.js';
 import { ValidationError } from '../../core/errors.js';
 import { auditService } from '../audit/audit.service.js';
 import { redisLockManager } from '../../shared/redis.lock.js';
+import { postgresRepo } from '../../shared/postgres.repo.js';
 
 export class QuotaService {
   async getUserQuota(userId: string): Promise<QuotaInfo> {
@@ -94,6 +95,7 @@ export class QuotaService {
         user.storageUsedBytes = currentUsed + incomingBytes;
         user.updatedAt = new Date().toISOString();
         db.users.set(userId, user);
+        await postgresRepo.saveUser(user).catch(() => {});
       }
 
       await auditService.record({
@@ -131,6 +133,7 @@ export class QuotaService {
         user.storageUsedBytes = Math.max(0, currentUsed - releasedBytes);
         user.updatedAt = new Date().toISOString();
         db.users.set(userId, user);
+        await postgresRepo.saveUser(user).catch(() => {});
       }
 
       await auditService.record({

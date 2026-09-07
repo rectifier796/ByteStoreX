@@ -258,6 +258,7 @@ export class FilesService {
     }
 
     db.fileVersions.delete(versionId);
+    await postgresRepo.deleteFileVersion(versionId).catch(() => {});
 
     const { eligibleForGC } = await blobsService.decrementRefCount(targetVer.blobId);
     if (eligibleForGC) {

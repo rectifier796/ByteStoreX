@@ -192,6 +192,10 @@ export class PostgresRepository {
     );
   }
 
+  async deleteFileVersion(versionId: string): Promise<void> {
+    await pgDb.query(`DELETE FROM file_versions WHERE id = $1;`, [versionId]);
+  }
+
   // ================= SHARE LINKS =================
   async saveShareLink(link: ShareLink): Promise<void> {
     await pgDb.query(
