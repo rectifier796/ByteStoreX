@@ -101,30 +101,29 @@ export class PostgresRepository {
 
   // ================= FILES =================
   async saveFile(file: FileMetadata): Promise<void> {
+    let blobId = file.activeBlobId;
+    if (!blobId && file.checksum) {
+      blobId = file.checksum;
+    }
+
     // Ensure blob exists before setting FK
-    if (file.activeBlobId) {
+    if (blobId) {
       await pgDb.query(
         `INSERT INTO blobs (id, storage_path, size_bytes, mime_type, checksum, reference_count, created_at)
          VALUES ($1, $2, $3, $4, $5, 1, $6)
          ON CONFLICT (id) DO NOTHING;`,
-        [file.activeBlobId, file.storagePath, file.size, file.mimeType, file.checksum, file.createdAt]
+        [blobId, file.storagePath || '', file.size || 0, file.mimeType || 'application/octet-stream', file.checksum || blobId, file.createdAt || new Date().toISOString()]
       );
     }
 
     await pgDb.query(
       `INSERT INTO files (
-         id, name, original_name, mime_type, size, storage_path, checksum,
-         folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
+         id, name, folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
          current_version, tags, created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
-         original_name = EXCLUDED.original_name,
-         mime_type = EXCLUDED.mime_type,
-         size = EXCLUDED.size,
-         storage_path = EXCLUDED.storage_path,
-         checksum = EXCLUDED.checksum,
          folder_id = EXCLUDED.folder_id,
          active_blob_id = EXCLUDED.active_blob_id,
          is_starred = EXCLUDED.is_starred,
@@ -136,21 +135,16 @@ export class PostgresRepository {
       [
         file.id,
         file.name,
-        file.originalName || file.name,
-        file.mimeType || 'application/octet-stream',
-        file.size || 0,
-        file.storagePath || '',
-        file.checksum || '',
-        file.folderId,
+        file.folderId || null,
         file.ownerId,
-        file.activeBlobId || null,
+        blobId || null,
         file.isStarred || false,
         file.isTrashed || false,
         file.trashedAt || null,
         file.version || 1,
         file.tags || [],
-        file.createdAt,
-        file.updatedAt,
+        file.createdAt || new Date().toISOString(),
+        file.updatedAt || new Date().toISOString(),
       ]
     );
   }
@@ -169,7 +163,11 @@ export class PostgresRepository {
        LEFT JOIN blobs b ON f.active_blob_id = b.id;`
     );
     if (!res) return [];
-    return res.rows;
+    return res.rows.map((r: any) => ({
+      ...r,
+      size: Number(r.size || 0),
+      version: Number(r.version || 1),
+    }));
   }
 
   async deleteFile(fileId: string): Promise<void> {

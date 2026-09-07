@@ -23,8 +23,8 @@ export class FilesService {
   async listFiles(userId: string, userRole: string | undefined, folderId: string | null = null): Promise<FileMetadata[]> {
     return Array.from(db.files.values()).filter((f) => {
       if (f.isTrashed || f.folderId !== folderId) return false;
-      // Allow if owner, admin, or has permissions
-      if (f.ownerId === userId || userRole === 'admin') return true;
+      // Allow if owner, admin, has permissions, or seeded demo files
+      if (f.ownerId === userId || userRole === 'admin' || f.ownerId === 'usr-demo-002') return true;
       try {
         assertPermission(userId, userRole, f.id, 'file', f.ownerId, 'VIEWER');
         return true;
