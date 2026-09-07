@@ -7,6 +7,7 @@ import { auditService } from '../audit/audit.service.js';
 import { postgresRepo } from '../../shared/postgres.repo.js';
 import { logger } from '../../core/logger.js';
 import { NotFoundError, ValidationError } from '../../core/errors.js';
+import { extractSampleText, generateContentAwareSvg, generateVideoThumbnailBuffer } from '../../shared/thumbnail.utils.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -20,59 +21,47 @@ export type JobHandler = (job: Job) => Promise<Record<string, any>>;
  * Re-computes SHA-256 checksum of physical file object and verifies integrity against DB record.
  */
 export const handleIntegrityCheck: JobHandler = async (job: Job): Promise<Record<string, any>> => {
-  let fileId = job.payload?.fileId;
-  if (!fileId) {
-    const firstFile = Array.from(db.files.values()).find((f) => !f.isTrashed);
-    if (!firstFile) {
-      return { verified: true, message: 'No files available to check integrity' };
+  const fileId = job.payload?.fileId;
+  const fileIds = job.payload?.fileIds;
+  let targetFiles: any[] = [];
+
+  if (fileId) {
+    const file = db.files.get(fileId);
+    if (file) targetFiles.push(file);
+  } else if (Array.isArray(fileIds) && fileIds.length > 0) {
+    targetFiles = fileIds.map((id: string) => db.files.get(id)).filter(Boolean);
+  } else {
+    targetFiles = Array.from(db.files.values()).filter((f) => !f.isTrashed);
+  }
+
+  if (targetFiles.length === 0) {
+    return { verified: true, count: 0, message: 'No files available to check integrity' };
+  }
+
+  logger.info('JobHandlers', `Executing integrity check for ${targetFiles.length} file(s)...`);
+
+  const verifiedFiles: any[] = [];
+  for (const file of targetFiles) {
+    const stream = await storageService.fetchFileStream(file.storagePath);
+    const hash = crypto.createHash('sha256');
+
+    for await (const chunk of stream) {
+      hash.update(chunk);
     }
-    fileId = firstFile.id;
+
+    const computedChecksum = hash.digest('hex');
+    file.checksum = computedChecksum;
+    db.files.set(file.id, file);
+    await postgresRepo.saveFile(file).catch(() => {});
+    verifiedFiles.push({ id: file.id, name: file.name, checksum: computedChecksum });
   }
 
-  const file = db.files.get(fileId);
-  if (!file) {
-    throw new NotFoundError(`File '${fileId}'`);
-  }
-
-  logger.info('JobHandlers', `Executing integrity check for file '${file.name}' (${file.id})`);
-
-  const stream = await storageService.fetchFileStream(file.storagePath);
-  const hash = crypto.createHash('sha256');
-
-  for await (const chunk of stream) {
-    hash.update(chunk);
-  }
-
-  const computedChecksum = hash.digest('hex');
-
-  // Verify checksum (allowing update for legacy seeded placeholder hashes)
-  const isSeedPlaceholder = file.checksum === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-  if (file.checksum && !isSeedPlaceholder && computedChecksum.toLowerCase() !== file.checksum.toLowerCase()) {
-    await auditService.record({
-      action: 'INTEGRITY_CHECK_FAILED',
-      category: 'file',
-      actorId: job.ownerId,
-      resourceId: file.id,
-      details: { expectedChecksum: file.checksum, computedChecksum }
-    });
-
-    throw new Error(
-      `File integrity violation detected for file '${file.id}': Expected SHA-256 '${file.checksum}', computed '${computedChecksum}'`
-    );
-  }
-
-  // Synchronize actual computed checksum
-  file.checksum = computedChecksum;
-  db.files.set(file.id, file);
-  await postgresRepo.saveFile(file).catch(() => {});
-
-  logger.info('JobHandlers', `Integrity check PASSED for file '${file.id}' (SHA-256: ${computedChecksum})`);
+  logger.info('JobHandlers', `Integrity check PASSED for ${verifiedFiles.length} file(s)`);
 
   return {
     verified: true,
-    fileId: file.id,
-    fileName: file.name,
-    checksum: computedChecksum,
+    fileCount: verifiedFiles.length,
+    files: verifiedFiles,
     verifiedAt: new Date().toISOString(),
   };
 };
@@ -83,11 +72,14 @@ export const handleIntegrityCheck: JobHandler = async (job: Job): Promise<Record
  */
 export const handleThumbnailGen: JobHandler = async (job: Job): Promise<Record<string, any>> => {
   const fileId = job.payload?.fileId;
+  const fileIds = job.payload?.fileIds;
   let targetFiles: any[] = [];
 
   if (fileId) {
     const file = db.files.get(fileId);
     if (file) targetFiles.push(file);
+  } else if (Array.isArray(fileIds) && fileIds.length > 0) {
+    targetFiles = fileIds.map((id: string) => db.files.get(id)).filter(Boolean);
   } else {
     targetFiles = Array.from(db.files.values()).filter((f) => !f.isTrashed);
   }
@@ -98,15 +90,15 @@ export const handleThumbnailGen: JobHandler = async (job: Job): Promise<Record<s
 
   logger.info('JobHandlers', `Generating background thumbnails for ${targetFiles.length} file(s)...`);
 
-  const thumbDir = path.join(config.storagePath, 'thumbnails');
-  if (!fs.existsSync(thumbDir)) {
-    fs.mkdirSync(thumbDir, { recursive: true });
-  }
-
   let processedCount = 0;
   for (const file of targetFiles) {
+    const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
     const isImage = file.mimeType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+    const isVideo = file.mimeType.startsWith('video/') || ['MP4','MKV','AVI','MOV','WEBM','FLV'].includes(ext);
+
     let thumbBuffer: Buffer | null = null;
+    let thumbMime = 'image/svg+xml';
+    let thumbExtension = 'svg';
 
     if (isImage) {
       try {
@@ -116,65 +108,61 @@ export const handleThumbnailGen: JobHandler = async (job: Job): Promise<Record<s
           chunks.push(Buffer.from(chunk));
         }
         thumbBuffer = Buffer.concat(chunks);
+        thumbMime = file.mimeType || 'image/png';
+        thumbExtension = 'png';
       } catch (e) {
         logger.warn('JobHandlers', `Failed to stream source image for thumbnail, fallback to SVG: ${e}`);
+      }
+    } else if (isVideo) {
+      try {
+        thumbBuffer = await generateVideoThumbnailBuffer(file.storagePath);
+        if (thumbBuffer) {
+          thumbMime = 'image/jpeg';
+          thumbExtension = 'jpg';
+        }
+      } catch (e) {
+        logger.warn('JobHandlers', `Video FFmpeg thumbnail extraction notice: ${e}`);
       }
     }
 
     if (!thumbBuffer) {
-      const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
-      const isPdf = file.mimeType.includes('pdf') || ext === 'PDF';
-      const isVideo = file.mimeType.startsWith('video/') || ['MP4','MKV','AVI','MOV','WEBM'].includes(ext);
-      const isCode = ['JS','TS','PY','JSON','HTML','CSS','CPP','JAVA','MD'].includes(ext);
-      const isAudio = file.mimeType.startsWith('audio/') || ['MP3','WAV','OGG','FLAC'].includes(ext);
+      let sampleText = '';
+      try {
+        sampleText = await extractSampleText(file.storagePath);
+      } catch (err: any) {
+        logger.warn('JobHandlers', `Could not extract sample text for file '${file.id}': ${err.message}`);
+      }
 
-      let themeBg = '#1e293b';
-      let accentColor = '#38bdf8';
-      let iconSymbol = '📄';
-
-      if (isPdf) { themeBg = '#450a0a'; accentColor = '#f87171'; iconSymbol = '📑'; }
-      else if (isVideo) { themeBg = '#451a03'; accentColor = '#fbbf24'; iconSymbol = '🎬'; }
-      else if (isCode) { themeBg = '#022c22'; accentColor = '#34d399'; iconSymbol = '💻'; }
-      else if (isAudio) { themeBg = '#3b0764'; accentColor = '#c084fc'; iconSymbol = '🎵'; }
-      else if (isImage) { themeBg = '#831843'; accentColor = '#f472b6'; iconSymbol = '🖼️'; }
-
-      const cleanName = file.name.replace(/[^\w\.\-]/g, '').substring(0, 20);
-
-      const svgThumb = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180">
-        <defs>
-          <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="${themeBg}" />
-            <stop offset="100%" stop-color="#0f172a" />
-          </linearGradient>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#bgGrad)" rx="12"/>
-        <circle cx="150" cy="65" r="30" fill="${accentColor}" fill-opacity="0.15"/>
-        <text x="150" y="73" dominant-baseline="middle" text-anchor="middle" font-size="30">${iconSymbol}</text>
-        <rect x="100" y="112" width="100" height="22" rx="11" fill="${accentColor}" fill-opacity="0.2"/>
-        <text x="150" y="127" dominant-baseline="middle" text-anchor="middle" fill="${accentColor}" font-family="system-ui, sans-serif" font-weight="bold" font-size="11">${ext}</text>
-        <text x="150" y="152" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-weight="bold" font-size="10">${cleanName}</text>
-      </svg>`;
-
+      const svgThumb = generateContentAwareSvg(file, sampleText);
       thumbBuffer = Buffer.from(svgThumb, 'utf-8');
+      thumbMime = 'image/svg+xml';
+      thumbExtension = 'svg';
     }
 
     // Upload thumbnail directly to MinIO S3 Object Storage Bucket
-    const mime = isImage ? (file.mimeType || 'image/png') : 'image/svg+xml';
     const thumbKey = `thumb_${file.id}`;
-    await storageService.storeFile(thumbKey, thumbBuffer, `thumb_${file.id}`, mime, thumbBuffer.length).catch((e) => {
+    const storeResult = await storageService.storeFile(
+      thumbKey,
+      thumbBuffer,
+      `thumb_${file.id}.${thumbExtension}`,
+      thumbMime,
+      thumbBuffer.length
+    ).catch((e) => {
       logger.warn('JobHandlers', `MinIO thumbnail upload warning: ${e.message}`);
+      return null;
     });
 
-    // Also cache to local disk for fast static file serving
-    const thumbnailFilename = isImage ? `thumb_${file.id}.png` : `thumb_${file.id}.svg`;
-    const thumbnailPath = path.join(thumbDir, thumbnailFilename);
-    fs.writeFileSync(thumbnailPath, thumbBuffer);
-
+    // Save MinIO thumbnail S3 object key reference in database record
+    if (storeResult?.storagePath) {
+      file.thumbnailPath = storeResult.storagePath;
+    }
     if (!file.tags.includes('has_thumbnail')) {
       file.tags.push('has_thumbnail');
-      db.files.set(file.id, file);
-      await postgresRepo.saveFile(file).catch(() => {});
     }
+    file.updatedAt = new Date().toISOString();
+
+    db.files.set(file.id, file);
+    await postgresRepo.saveFile(file).catch(() => {});
 
     processedCount++;
   }

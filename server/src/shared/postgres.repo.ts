@@ -130,13 +130,20 @@ export class PostgresRepository {
       );
     }
 
+    const tags = file.tags ? [...file.tags] : [];
+    if (file.thumbnailPath) {
+      const cleanTags = tags.filter((t) => !t.startsWith('thumb_path:'));
+      cleanTags.push(`thumb_path:${file.thumbnailPath}`);
+      file.tags = cleanTags;
+    }
+
     await pgDb.query(
       `INSERT INTO files (
          id, name, original_name, mime_type, size, storage_path, checksum,
          folder_id, owner_id, active_blob_id, is_starred, is_trashed, trashed_at,
-         current_version, version, tags, created_at, updated_at
+         current_version, version, thumbnail_path, tags, created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17, $18)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          original_name = EXCLUDED.original_name,
@@ -151,6 +158,7 @@ export class PostgresRepository {
          trashed_at = EXCLUDED.trashed_at,
          current_version = EXCLUDED.current_version,
          version = EXCLUDED.version,
+         thumbnail_path = EXCLUDED.thumbnail_path,
          tags = EXCLUDED.tags,
          updated_at = EXCLUDED.updated_at;`,
       [
@@ -168,9 +176,10 @@ export class PostgresRepository {
         file.isTrashed || false,                           // $12
         file.trashedAt || null,                            // $13
         file.version || 1,                                 // $14 (used for both current_version and version)
-        file.tags || [],                                   // $15
-        file.createdAt || new Date().toISOString(),        // $16
-        file.updatedAt || new Date().toISOString(),        // $17
+        file.thumbnailPath || null,                        // $15
+        file.tags || [],                                   // $16
+        file.createdAt || new Date().toISOString(),        // $17
+        file.updatedAt || new Date().toISOString(),        // $18
       ]
     );
   }
@@ -183,6 +192,7 @@ export class PostgresRepository {
               f.active_blob_id as "activeBlobId", f.is_starred as "isStarred", f.is_trashed as "isTrashed", 
               f.trashed_at as "trashedAt", 
               COALESCE(f.current_version, f.version, 1) as "version",
+              f.thumbnail_path as "thumbnailPath",
               f.tags, f.created_at as "createdAt", f.updated_at as "updatedAt",
               COALESCE(f.storage_path, b.storage_path, '') as "storagePath",
               COALESCE(f.size, b.size_bytes, 0) as "size",
@@ -192,11 +202,16 @@ export class PostgresRepository {
        LEFT JOIN blobs b ON f.active_blob_id = b.id;`
     );
     if (!res) return [];
-    return res.rows.map((r: any) => ({
-      ...r,
-      size: Number(r.size || 0),
-      version: Number(r.version || 1),
-    }));
+    return res.rows.map((r: any) => {
+      const tags: string[] = r.tags || [];
+      const thumbTag = tags.find((t: string) => t.startsWith('thumb_path:'));
+      return {
+        ...r,
+        thumbnailPath: r.thumbnailPath || (thumbTag ? thumbTag.substring(11) : undefined),
+        size: Number(r.size || 0),
+        version: Number(r.version || 1),
+      };
+    });
   }
 
   async deleteFile(fileId: string): Promise<void> {

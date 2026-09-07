@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { PdfThumbnail } from './PdfThumbnail';
 import {
   Folder as FolderIcon,
   File as FileIcon,
@@ -503,7 +504,7 @@ export const Explorer: React.FC<ExplorerProps> = ({
             {filteredFiles.map((file) => {
               const color = getFileColor(file.mimeType);
               const token = localStorage.getItem('bytestore_access_token') || '';
-              const thumbnailUrl = `/api/v1/files/${file.id}/thumbnail?token=${encodeURIComponent(token)}`;
+              const thumbnailUrl = `/api/v1/files/${file.id}/thumbnail?token=${encodeURIComponent(token)}&v=${encodeURIComponent(file.updatedAt || file.id)}`;
 
               return (
                 <div
@@ -515,24 +516,30 @@ export const Explorer: React.FC<ExplorerProps> = ({
                   {/* Grid Thumbnail Box */}
                   {viewMode === 'grid' && (
                     <div className="file-card-thumbnail">
-                      <img
-                        src={thumbnailUrl}
-                        alt={file.name}
-                        loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                          const fallback = (e.target as HTMLElement).nextElementSibling as HTMLElement;
-                          if (fallback) fallback.style.display = 'flex';
-                        }}
-                      />
-                      <div className="file-card-thumbnail-fallback" style={{ display: 'none', background: `${color}15` }}>
-                        <div className="file-card-thumbnail-icon" style={{ background: `${color}25` }}>
-                          {getFileIcon(file.mimeType, 26)}
-                        </div>
-                        <span className="file-card-thumbnail-ext" style={{ color }}>
-                          {file.name.split('.').pop()?.toUpperCase() || 'FILE'}
-                        </span>
-                      </div>
+                      {file.mimeType.includes('pdf') || /\.pdf$/i.test(file.name) ? (
+                        <PdfThumbnail fileId={file.id} token={token} fallbackUrl={thumbnailUrl} />
+                      ) : (
+                        <>
+                          <img
+                            src={thumbnailUrl}
+                            alt={file.name}
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                              const fallback = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div className="file-card-thumbnail-fallback" style={{ display: 'none', background: `${color}15` }}>
+                            <div className="file-card-thumbnail-icon" style={{ background: `${color}25` }}>
+                              {getFileIcon(file.mimeType, 26)}
+                            </div>
+                            <span className="file-card-thumbnail-ext" style={{ color }}>
+                              {file.name.split('.').pop()?.toUpperCase() || 'FILE'}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
